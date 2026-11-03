@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sentra NOC — Monitoring CCTV &amp; Database IP</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<script>
+/* =====================================================================
+   KONFIGURASI BACKEND
+   Kosongkan keduanya  -> mode LOKAL (localStorage, akun demo di browser)
+   Isi keduanya        -> mode SUPABASE (auth + Postgres, multi-user)
+   Jalankan supabase-setup.sql di SQL Editor Supabase lebih dulu.
+===================================================================== */
+const SUPABASE_URL      = "";   // contoh: "https://abcdefgh.supabase.co"
+const SUPABASE_ANON_KEY = "";   // anon public key (bukan service_role)
+</script>
+
+<script>
+tailwind.config = { theme: { extend: {
+  colors: {
+    ink:{900:'#0a0f14',800:'#0f161d',700:'#151e27',600:'#1d2832',500:'#2a3845'},
+    line:'#223040', on:'#10d9a3', off:'#ff4d5e', maint:'#ffb020', cyan2:'#22d3ee'
+  },
+  fontFamily:{ sans:['"Barlow Semi Condensed"','system-ui','sans-serif'], mono:['"IBM Plex Mono"','ui-monospace','monospace'] }
+}}}
+</script>
+
+<style>
+  :root{ box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px); }
+  body{ background:#0a0f14; color:#d7e3ee; margin:0; }
+  ::-webkit-scrollbar{ width:9px; height:9px }
+  ::-webkit-scrollbar-track{ background:#0f161d }
+  ::-webkit-scrollbar-thumb{ background:#2a3845; border-radius:6px }
+
+  .grid-bg{ background-image:linear-gradient(rgba(34,211,238,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(34,211,238,.045) 1px,transparent 1px); background-size:34px 34px; }
+
+  /* status — ditulis sebagai CSS biasa, bukan kelas Tailwind dinamis */
+  .s{ display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600 }
+  .s i{ width:8px; height:8px; border-radius:50%; display:inline-block }
+  .s-on{ color:#10d9a3 } .s-on i{ background:#10d9a3; box-shadow:0 0 0 3px rgba(16,217,163,.18) }
+  .s-off{ color:#ff4d5e } .s-off i{ background:#ff4d5e; box-shadow:0 0 0 3px rgba(255,77,94,.18) }
+  .s-maint{ color:#ffb020 } .s-maint i{ background:#ffb020; box-shadow:0 0 0 3px rgba(255,176,32,.18) }
+
+  .pin{ width:18px;height:18px;border-radius:50%;border:2px solid #0a0f14 }
+  .pin-on{ background:#10d9a3; box-shadow:0 0 0 4px rgba(16,217,163,.28) }
+  .pin-off{ background:#ff4d5e; box-shadow:0 0 0 4px rgba(255,77,94,.28) }
+  .pin-maint{ background:#ffb020; box-shadow:0 0 0 4px rgba(255,176,32,.28) }
+
+  .leaflet-container{ background:#0f161d }
+  .leaflet-popup-content-wrapper,.leaflet-popup-tip{ background:#151e27; color:#d7e3ee; border:1px solid #223040 }
+  .leaflet-popup-content-wrapper{ border-radius:10px }
+  .leaflet-popup-content{ margin:10px 12px }
+  .leaflet-tile{ filter:grayscale(.85) invert(.92) hue-rotate(185deg) brightness(.92) contrast(1.05) }
+  .leaflet-control-attribution{ background:rgba(10,15,20,.75)!important; color:#5d6f80!important }
+  .leaflet-control-attribution a{ color:#7b93a7!important }
+
+  .inp{ width:100%; margin-top:.35rem; background:#151e27; border:1px solid #223040; border-radius:.375rem; padding:.5rem .7rem; font-size:.875rem; color:#d7e3ee }
+  .inp:focus{ outline:none; border-color:#22d3ee }
+  label{ color:#94a3b8 }
+  input,select,textarea{ color-scheme:dark }
+  :focus-visible{ outline:2px solid #22d3ee; outline-offset:2px }
+  .sortable:hover{ color:#22d3ee; cursor:pointer }
+  [hidden]{ display:none!important }
+  @media (prefers-reduced-motion:no-preference){
+    .fade{ animation:f .18s ease-out }
+    @keyframes f{ from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none} }
+  }
+</style>
+</head>
+
+<body class="font-sans min-h-screen">
+
+<!-- ================= AUTH ================= -->
+<div id="auth" class="min-h-screen grid place-items-center p-4 grid-bg">
+  <div class="w-full max-w-sm">
+    <div class="flex items-center gap-3 mb-6">
+      <div class="w-11 h-11 rounded bg-cyan2/10 border border-cyan2/30 grid place-items-center">
+        <i data-lucide="radio-tower" class="w-6 h-6 text-cyan2"></i>
+      </div>
+      <div>
+        <div class="text-2xl font-bold text-white leading-none">SENTRA<span class="text-cyan2">NOC</span></div>
+        <div class="text-xs text-slate-500">Monitoring CCTV &amp; database IP</div>
+      </div>
+    </div>
+
+    <div class="bg-ink-800 border border-line rounded-lg p-5">
+      <div class="flex gap-1 bg-ink-700 p-1 rounded border border-line mb-4">
+        <button id="tabLogin"  class="authtab flex-1 py-1.5 rounded text-sm font-semibold">Masuk</button>
+        <button id="tabSignup" class="authtab flex-1 py-1.5 rounded text-sm font-semibold">Daftar</button>
+      </div>
+
+      <form id="authForm" class="grid gap-3">
+        <label class="text-sm">Email
+          <input id="a_email" type="email" required autocomplete="email" placeholder="nama@perusahaan.co.id" class="inp">
+        </label>
+        <label class="text-sm">Kata sandi
+          <input id="a_pass" type="password" required minlength="8" autocomplete="current-password" placeholder="minimal 8 karakter" class="inp">
+        </label>
+        <label class="text-sm" id="wrapPass2" hidden>Ulangi kata sandi
+          <input id="a_pass2" type="password" minlength="8" autocomplete="new-password" class="inp">
+        </label>
+        <p id="authMsg" class="text-xs leading-relaxed" hidden></p>
+        <button id="authSubmit" type="submit" class="w-full py-2.5 rounded bg-cyan2 text-ink-900 font-bold text-sm">Masuk</button>
+      </form>
+
+      <div id="localNote" class="mt-4 pt-4 border-t border-line text-xs text-slate-500 leading-relaxed"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="app" hidden>
+
+<header class="sticky top-0 z-[500] bg-ink-800/95 backdrop-blur border-b border-line">
+  <div class="px-3 md:px-5 py-2.5 flex flex-wrap items-center gap-3">
+    <div class="flex items-center gap-2.5 mr-1">
+      <div class="w-9 h-9 rounded bg-cyan2/10 border border-cyan2/30 grid place-items-center">
+        <i data-lucide="radio-tower" class="w-5 h-5 text-cyan2"></i>
+      </div>
+      <div class="leading-none">
+        <div class="text-lg font-bold tracking-wide text-white">SENTRA<span class="text-cyan2">NOC</span></div>
+        <div class="text-[11px] text-slate-500 font-mono" id="clock">--:--:--</div>
+      </div>
+    </div>
+
+    <nav class="flex gap-1 bg-ink-700 p-1 rounded border border-line">
+      <button data-tab="monitor" class="tab-btn px-3 py-1.5 rounded text-sm font-semibold flex items-center gap-2"><i data-lucide="cctv" class="w-4 h-4"></i> Monitoring CCTV</button>
+      <button data-tab="ipdb" class="tab-btn px-3 py-1.5 rounded text-sm font-semibold flex items-center gap-2"><i data-lucide="network" class="w-4 h-4"></i> Database IP</button>
+    </nav>
+
+    <div class="flex-1 min-w-[180px]">
+      <div class="relative">
+        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"></i>
+        <input id="search" type="search" placeholder="Cari nama, IP, cluster, atau zona…" class="w-full bg-ink-700 border border-line rounded pl-9 pr-3 py-2 text-sm placeholder-slate-500 focus:outline-none focus:border-cyan2">
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <button id="btnAdd" class="px-3 py-2 rounded bg-cyan2 text-ink-900 text-sm font-bold flex items-center gap-1.5 hover:bg-cyan-300"><i data-lucide="plus" class="w-4 h-4"></i> Tambah device</button>
+      <div class="relative">
+        <button id="btnMore" aria-label="Menu lain" class="px-2.5 py-2 rounded bg-ink-700 border border-line hover:border-cyan2"><i data-lucide="more-vertical" class="w-4 h-4"></i></button>
+        <div id="menuMore" hidden class="absolute right-0 mt-1 w-60 bg-ink-700 border border-line rounded shadow-xl overflow-hidden text-sm">
+          <div class="px-3 py-2 border-b border-line text-xs text-slate-500">
+            <div id="whoami" class="truncate text-slate-300"></div>
+            <div id="modeLabel" class="mt-0.5"></div>
+          </div>
+          <button id="btnImport" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="upload" class="w-4 h-4 text-cyan2"></i> Impor CSV</button>
+          <button id="btnTemplate" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="file-down" class="w-4 h-4 text-cyan2"></i> Unduh template CSV</button>
+          <button id="btnExport" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="download" class="w-4 h-4 text-cyan2"></i> Ekspor semua data</button>
+          <button id="btnSeed" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2 text-amber-400"><i data-lucide="refresh-cw" class="w-4 h-4"></i> Muat data contoh</button>
+          <button id="btnWipe" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2 text-off"><i data-lucide="trash-2" class="w-4 h-4"></i> Hapus seluruh data</button>
+          <button id="btnLogout" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2 border-t border-line"><i data-lucide="log-out" class="w-4 h-4"></i> Keluar</button>
+        </div>
+      </div>
+      <input id="fileCsv" type="file" accept=".csv,text/csv" hidden>
+    </div>
+  </div>
+  <div class="px-3 md:px-5 pb-2.5 grid grid-cols-2 md:grid-cols-5 gap-2" id="stats"></div>
+</header>
+
+<div class="px-3 md:px-5 py-2.5 border-b border-line bg-ink-900/70 flex flex-wrap items-center gap-2">
+  <select id="fCluster" aria-label="Filter cluster" class="bg-ink-700 border border-line rounded px-2.5 py-1.5 text-sm"></select>
+  <select id="fZona"    aria-label="Filter zona"    class="bg-ink-700 border border-line rounded px-2.5 py-1.5 text-sm"></select>
+  <select id="fBrand"   aria-label="Filter brand"   class="bg-ink-700 border border-line rounded px-2.5 py-1.5 text-sm"></select>
+  <select id="fStatus"  aria-label="Filter status"  class="bg-ink-700 border border-line rounded px-2.5 py-1.5 text-sm"></select>
+  <button id="fReset" class="px-2.5 py-1.5 text-sm rounded border border-line text-slate-400 hover:text-cyan2 hover:border-cyan2 flex items-center gap-1.5"><i data-lucide="filter-x" class="w-3.5 h-3.5"></i> Bersihkan filter</button>
+  <span id="filterCount" class="text-sm text-slate-500 font-mono"></span>
+  <div class="ml-auto flex gap-1 bg-ink-700 p-1 rounded border border-line" id="viewSwitch">
+    <button data-view="grid" class="view-btn px-2.5 py-1.5 rounded text-sm flex items-center gap-1.5"><i data-lucide="layout-grid" class="w-4 h-4"></i><span class="hidden sm:inline">Grid</span></button>
+    <button data-view="list" class="view-btn px-2.5 py-1.5 rounded text-sm flex items-center gap-1.5"><i data-lucide="table-2" class="w-4 h-4"></i><span class="hidden sm:inline">Tabel</span></button>
+    <button data-view="map"  class="view-btn px-2.5 py-1.5 rounded text-sm flex items-center gap-1.5"><i data-lucide="map-pin" class="w-4 h-4"></i><span class="hidden sm:inline">Peta</span></button>
+  </div>
+</div>
+
+<main class="p-3 md:p-5">
+  <section id="tab-monitor">
+    <div id="viewGrid" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"></div>
+    <div id="viewList" hidden class="overflow-x-auto border border-line rounded bg-ink-800"></div>
+    <div id="viewMap"  hidden class="border border-line rounded overflow-hidden">
+      <div id="map" class="w-full" style="height:min(72vh,720px)"></div>
+    </div>
+  </section>
+
+  <section id="tab-ipdb" hidden class="space-y-5">
+    <div>
+      <h2 class="text-base font-bold text-white mb-2 flex items-center gap-2"><i data-lucide="layers" class="w-4 h-4 text-cyan2"></i> Segmentasi subnet</h2>
+      <div id="segments" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"></div>
+    </div>
+    <div class="grid gap-5 xl:grid-cols-[1fr_420px] items-start">
+      <div>
+        <h2 class="text-base font-bold text-white mb-2 flex items-center gap-2"><i data-lucide="list-ordered" class="w-4 h-4 text-cyan2"></i> Master IP address</h2>
+        <div id="ipTable" class="overflow-x-auto border border-line rounded bg-ink-800"></div>
+      </div>
+      <div class="border border-line rounded bg-ink-800 p-4">
+        <h2 class="text-base font-bold text-white mb-1 flex items-center gap-2"><i data-lucide="scan-search" class="w-4 h-4 text-cyan2"></i> Cari IP kosong</h2>
+        <p class="text-xs text-slate-500 mb-3 leading-relaxed">Membandingkan rentang .1–.254 dengan isi database. Tidak melakukan ping, jadi IP yang dipakai perangkat tapi belum dicatat tetap terlihat kosong — verifikasi sebelum dipakai.</p>
+        <div class="flex gap-2">
+          <input id="segInput" placeholder="192.168.1" aria-label="Segmen IP" class="flex-1 bg-ink-700 border border-line rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-cyan2">
+          <button id="btnScan" class="px-3 py-2 rounded bg-cyan2 text-ink-900 text-sm font-bold">Cari</button>
+        </div>
+        <div id="segQuick" class="flex flex-wrap gap-1.5 mt-2"></div>
+        <div id="scanResult" class="mt-3"></div>
+      </div>
+    </div>
+  </section>
+</main>
+</div>
+
+<!-- ================= MODAL ================= -->
+<div id="modal" hidden class="fixed inset-0 z-[1000] bg-black/70 backdrop-blur-sm overflow-y-auto p-3 md:p-6">
+  <div class="max-w-3xl mx-auto bg-ink-800 border border-line rounded-lg shadow-2xl fade">
+    <div class="flex items-center justify-between px-5 py-3 border-b border-line sticky top-0 bg-ink-800 rounded-t-lg">
+      <h3 id="modalTitle" class="font-bold text-white">Tambah device</h3>
+      <button id="modalClose" aria-label="Tutup" class="text-slate-400 hover:text-off"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <form id="form" class="p-5 grid gap-4 md:grid-cols-2">
+      <input type="hidden" id="f_id">
+      <label class="md:col-span-2 text-sm">Nama kamera / lokasi<input id="f_nama" required placeholder="Gate Utama 01" class="inp"></label>
+      <label class="text-sm">Alamat IP<input id="f_ip" required placeholder="192.168.1.101" class="inp font-mono"></label>
+      <div class="grid grid-cols-2 gap-3">
+        <label class="text-sm">Port HTTP<input id="f_porthttp" type="number" value="80" class="inp font-mono"></label>
+        <label class="text-sm">Port RTSP<input id="f_portrtsp" type="number" value="554" class="inp font-mono"></label>
+      </div>
+      <label class="text-sm">Brand / tipe<input id="f_brand" list="brandList" placeholder="Hikvision" class="inp">
+        <datalist id="brandList"><option>Hikvision</option><option>Dahua</option><option>EZVIZ</option><option>Axis</option><option>Uniview</option><option>Hanwha</option></datalist></label>
+      <label class="text-sm">Kategori perangkat<select id="f_kategori" class="inp"><option>CCTV</option><option>NVR</option><option>Switch</option><option>Access Point</option><option>Access Control</option><option>Server</option><option>Lainnya</option></select></label>
+      <label class="text-sm">Cluster<input id="f_cluster" list="clusterList" placeholder="Cluster Jasmine" class="inp"><datalist id="clusterList"></datalist></label>
+      <label class="text-sm">Zona / area<input id="f_zona" list="zonaList" placeholder="Zone A" class="inp">
+        <datalist id="zonaList"><option>Zone A</option><option>Zone B</option><option>Zone C</option><option>Parkir</option><option>Server Room</option><option>Main Gate</option></datalist></label>
+      <label class="text-sm">Status perangkat<select id="f_status" class="inp"><option>Online</option><option>Offline</option><option>Maintenance</option></select></label>
+      <label class="text-sm">Status IP<select id="f_ipstatus" class="inp"><option>Used</option><option>Reserved</option></select></label>
+      <label class="text-sm">Latitude<input id="f_lat" placeholder="-6.200000" class="inp font-mono"></label>
+      <label class="text-sm">Longitude<input id="f_lng" placeholder="106.816666" class="inp font-mono"></label>
+      <details class="md:col-span-2 border border-line rounded bg-ink-900/40" open>
+        <summary class="px-3 py-2 text-sm font-semibold text-slate-300 cursor-pointer select-none">Spesifikasi perangkat</summary>
+        <div class="p-3 pt-1 grid gap-3 md:grid-cols-3">
+          <label class="text-sm md:col-span-2">Seri / model
+            <input id="f_seri" list="seriList" placeholder="DS-2CD2143G2-I" class="inp font-mono">
+            <datalist id="seriList"></datalist>
+          </label>
+          <label class="text-sm">Bentuk kamera
+            <select id="f_tipekamera" class="inp"><option value="">—</option><option>Dome</option><option>Turret</option><option>Bullet</option><option>PTZ</option><option>Fisheye</option><option>Box</option><option>Panoramic</option></select>
+          </label>
+          <label class="text-sm">Resolusi
+            <input id="f_resolusi" list="resList" placeholder="4MP (2560×1440)" class="inp">
+            <datalist id="resList"><option>2MP (1920×1080)</option><option>4MP (2560×1440)</option><option>5MP (2880×1620)</option><option>8MP / 4K (3840×2160)</option><option>12MP</option></datalist>
+          </label>
+          <label class="text-sm">Lensa (mm)
+            <input id="f_lensa" placeholder="2.8 atau 2.8–12 motorized" class="inp">
+          </label>
+          <label class="text-sm">Jangkauan IR / malam (m)
+            <input id="f_ir" placeholder="30" class="inp font-mono">
+          </label>
+          <label class="text-sm md:col-span-3">Fitur
+            <input id="f_fitur" placeholder="WDR 120dB, ColorVu, audio 2 arah, deteksi manusia, IP67" class="inp">
+          </label>
+          <label class="text-sm">Serial number
+            <input id="f_serial" placeholder="SN-..." class="inp font-mono">
+          </label>
+          <label class="text-sm">MAC address
+            <input id="f_mac" placeholder="A4:14:37:xx:xx:xx" class="inp font-mono">
+          </label>
+          <label class="text-sm">Firmware
+            <input id="f_firmware" placeholder="V5.7.3 build 230418" class="inp font-mono">
+          </label>
+          <label class="text-sm">Sumber daya
+            <select id="f_daya" class="inp"><option value="">—</option><option>PoE (802.3af)</option><option>PoE+ (802.3at)</option><option>12V DC</option><option>24V AC</option><option>Solar / baterai</option></select>
+          </label>
+          <label class="text-sm">Tanggal pasang
+            <input id="f_tglpasang" type="date" class="inp">
+          </label>
+          <label class="text-sm">Garansi sampai
+            <input id="f_garansi" type="date" class="inp">
+          </label>
+          <label class="text-sm md:col-span-3">Catatan teknisi
+            <textarea id="f_catatan" rows="2" placeholder="Sudut pandang menghadap gerbang keluar; kabel lewat tray utara." class="inp"></textarea>
+          </label>
+        </div>
+      </details>
+
+      <div class="md:col-span-2 text-sm">
+        <span>Foto sudut pandang kamera</span>
+        <div class="mt-1.5 flex items-center gap-3">
+          <div id="fotoPrev" class="w-36 h-24 rounded border border-line bg-ink-700 grid place-items-center overflow-hidden text-slate-600 text-xs">belum ada foto</div>
+          <div class="flex flex-col gap-2">
+            <input id="f_foto" type="file" accept="image/*" class="text-xs file:mr-2 file:px-3 file:py-1.5 file:rounded file:border-0 file:bg-ink-600 file:text-slate-200">
+            <button type="button" id="fotoClear" class="text-xs text-off text-left hover:underline">Hapus foto</button>
+          </div>
+        </div>
+        <p class="text-xs text-slate-500 mt-1.5">Gambar dikecilkan otomatis ke lebar 720px sebelum disimpan.</p>
+      </div>
+      <div class="md:col-span-2 flex justify-end gap-2 pt-2 border-t border-line">
+        <button type="button" id="formCancel" class="px-4 py-2 rounded border border-line text-sm">Batal</button>
+        <button type="submit" class="px-4 py-2 rounded bg-cyan2 text-ink-900 font-bold text-sm">Simpan device</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ================= DETAIL ================= -->
+<div id="detail" hidden class="fixed inset-0 z-[1000] bg-black/70 backdrop-blur-sm overflow-y-auto p-3 md:p-6">
+  <div class="max-w-3xl mx-auto bg-ink-800 border border-line rounded-lg shadow-2xl fade">
+    <div class="flex items-center justify-between px-5 py-3 border-b border-line sticky top-0 bg-ink-800 rounded-t-lg">
+      <h3 id="detailTitle" class="font-bold text-white">Detail device</h3>
+      <button id="detailClose" aria-label="Tutup" class="text-slate-400 hover:text-off"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <div id="detailBody" class="p-5"></div>
+  </div>
+</div>
+
+<div id="toast" class="fixed bottom-4 right-4 z-[2000] space-y-2"></div>
+
+<script>
+/* ============================ UTIL ============================ */
+const $  = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => 'd'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const isIp = ip => /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip) && ip.split('.').every(o=>+o>=0&&+o<=255);
+const segOf = ip => isIp(ip) ? ip.split('.').slice(0,3).join('.') : '—';
+const hostOf = ip => isIp(ip) ? +ip.split('.')[3] : NaN;
+const STATUS = ['Online','Offline','Maintenance'];
+const tone = s => s==='Online'?'on':s==='Offline'?'off':'maint';
+
+function toast(msg, kind='ok'){
+  const c = kind==='err'?'border-off text-off':kind==='warn'?'border-maint text-maint':'border-on text-on';
+  const el = document.createElement('div');
+  el.className = `bg-ink-800 border ${c} rounded px-4 py-2.5 text-sm shadow-xl fade max-w-xs`;
+  el.textContent = msg; $('#toast').appendChild(el); setTimeout(()=>el.remove(),4000);
+}
+function statusPill(s){ return `<span class="s s-${tone(s)}"><i></i>${esc(s)}</span>`; }
+
+/* ============================ BACKEND ============================ */
+const CLOUD = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
+const sb = CLOUD ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+let session = null;              // {email, id}
+let devices = [];
+
+const localKey = () => 'sentra_devices::' + (session?.email || 'anon');
+
+/* ---- mapping baris Supabase <-> objek JS ---- */
+const fromRow = r => ({ id:r.id, nama:r.nama, ip:r.ip, portHttp:r.port_http, portRtsp:r.port_rtsp,
+  brand:r.brand, kategori:r.kategori, cluster:r.cluster, zona:r.zona, status:r.status,
+  ipStatus:r.ip_status, lat:r.lat ?? '', lng:r.lng ?? '', foto:r.foto,
+  seri:r.seri||'', tipeKamera:r.tipe_kamera||'', resolusi:r.resolusi||'', lensa:r.lensa_mm||'',
+  ir:r.ir_m||'', fitur:r.fitur||'', serial:r.serial_number||'', mac:r.mac||'', firmware:r.firmware||'',
+  daya:r.daya||'', tglPasang:r.tgl_pasang||'', garansi:r.garansi_sampai||'', catatan:r.catatan||'' });
+const toRow = d => ({ id:d.id, nama:d.nama, ip:d.ip, port_http:d.portHttp, port_rtsp:d.portRtsp,
+  brand:d.brand, kategori:d.kategori, cluster:d.cluster, zona:d.zona, status:d.status,
+  ip_status:d.ipStatus, lat:d.lat===''?null:+d.lat, lng:d.lng===''?null:+d.lng, foto:d.foto,
+  seri:d.seri||null, tipe_kamera:d.tipeKamera||null, resolusi:d.resolusi||null, lensa_mm:d.lensa||null,
+  ir_m:d.ir||null, fitur:d.fitur||null, serial_number:d.serial||null, mac:d.mac||null,
+  firmware:d.firmware||null, daya:d.daya||null, tgl_pasang:d.tglPasang||null,
+  garansi_sampai:d.garansi||null, catatan:d.catatan||null });
+
+const api = {
+  async list(){
+    if(!CLOUD){ try{ return JSON.parse(localStorage.getItem(localKey())||'[]'); }catch{ return []; } }
+    const { data, error } = await sb.from('devices').select('*').order('ip');
+    if(error) throw error;
+    return (data||[]).map(fromRow);
+  },
+  async upsert(d){
+    if(!CLOUD){ const i = devices.findIndex(x=>x.id===d.id); i>-1?devices[i]=d:devices.push(d); return saveLocal(); }
+    const row = toRow(d); row.user_id = session.id;
+    const { error } = await sb.from('devices').upsert(row);
+    if(error) throw error;
+  },
+  async upsertMany(arr){
+    if(!CLOUD){ arr.forEach(d=>{ const i=devices.findIndex(x=>x.ip===d.ip); i>-1?devices[i]={...d,id:devices[i].id}:devices.push(d); }); return saveLocal(); }
+    const rows = arr.map(d=>({ ...toRow(d), user_id: session.id }));
+    const { error } = await sb.from('devices').upsert(rows, { onConflict:'user_id,ip' });
+    if(error) throw error;
+  },
+  async remove(id){
+    if(!CLOUD){ devices = devices.filter(d=>d.id!==id); return saveLocal(); }
+    const { error } = await sb.from('devices').delete().eq('id', id);
+    if(error) throw error;
+  },
+  async wipe(){
+    if(!CLOUD){ devices=[]; return saveLocal(); }
+    const { error } = await sb.from('devices').delete().eq('user_id', session.id);
+    if(error) throw error;
+  }
+};
+function saveLocal(){
+  try{ localStorage.setItem(localKey(), JSON.stringify(devices)); }
+  catch{ toast('Penyimpanan browser penuh. Hapus beberapa foto.','err'); }
+}
+async function reload(){
+  try{ devices = await api.list(); }
+  catch(e){ toast('Gagal memuat data: '+(e.message||e),'err'); devices = []; }
+  render();
+}
+
+/* ============================ AUTH ============================ */
+let authMode = 'login';
+
+async function sha(text){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+const accounts = {
+  all(){ try{ return JSON.parse(localStorage.getItem('sentra_accounts')||'{}'); }catch{ return {}; } },
+  put(o){ localStorage.setItem('sentra_accounts', JSON.stringify(o)); }
+};
+
+function setAuthMode(m){
+  authMode = m;
+  $('#wrapPass2').hidden = m==='login';
+  $('#a_pass').autocomplete = m==='login' ? 'current-password' : 'new-password';
+  $('#authSubmit').textContent = m==='login' ? 'Masuk' : 'Buat akun';
+  $('#authMsg').hidden = true;
+  $$('.authtab').forEach(b=>{
+    const active = (b.id==='tabLogin') === (m==='login');
+    b.className = `authtab flex-1 py-1.5 rounded text-sm font-semibold ${active?'bg-cyan2 text-ink-900':'text-slate-400 hover:text-white'}`;
+  });
+}
+function authMsg(text, kind='err'){
+  const el = $('#authMsg');
+  el.textContent = text; el.hidden = false;
+  el.className = 'text-xs leading-relaxed ' + (kind==='ok'?'text-on':kind==='warn'?'text-maint':'text-off');
+}
+
+$('#tabLogin').addEventListener('click', ()=>setAuthMode('login'));
+$('#tabSignup').addEventListener('click', ()=>setAuthMode('signup'));
+
+$('#authForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const email = $('#a_email').value.trim().toLowerCase();
+  const pass  = $('#a_pass').value;
+  const btn = $('#authSubmit'); btn.disabled = true;
+  try{
+    if(authMode==='signup' && pass !== $('#a_pass2').value){ authMsg('Kata sandi tidak sama.'); return; }
+
+    if(CLOUD){
+      if(authMode==='signup'){
+        const { data, error } = await sb.auth.signUp({ email, password: pass });
+        if(error) throw error;
+        if(!data.session){ authMsg('Akun dibuat. Cek email untuk konfirmasi, lalu masuk.','ok'); setAuthMode('login'); return; }
+        session = { email, id: data.user.id };
+      }else{
+        const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+        if(error) throw error;
+        session = { email, id: data.user.id };
+      }
+    }else{
+      const acc = accounts.all();
+      if(authMode==='signup'){
+        if(acc[email]){ authMsg('Email sudah terdaftar di browser ini.'); return; }
+        const salt = crypto.randomUUID();
+        acc[email] = { salt, hash: await sha(salt+pass) };
+        accounts.put(acc);
+      }else{
+        const a = acc[email];
+        if(!a || a.hash !== await sha(a.salt+pass)){ authMsg('Email atau kata sandi salah.'); return; }
+      }
+      session = { email, id: email };
+      localStorage.setItem('sentra_session', email);
+    }
+    await enterApp();
+  }catch(err){
+    authMsg(err.message || 'Gagal memproses. Coba lagi.');
+  }finally{ btn.disabled = false; }
+});
+
+async function enterApp(){
+  $('#auth').hidden = true;
+  $('#app').hidden = false;
+  $('#whoami').textContent = session.email;
+  $('#modeLabel').innerHTML = CLOUD
+    ? '<span class="text-on">Supabase — tersimpan di cloud</span>'
+    : '<span class="text-maint">Mode lokal — data hanya di browser ini</span>';
+  await reload();
+  lucide.createIcons();
+}
+async function logout(){
+  if(CLOUD) await sb.auth.signOut(); else localStorage.removeItem('sentra_session');
+  session = null; devices = [];
+  $('#app').hidden = true; $('#auth').hidden = false;
+  $('#authForm').reset(); setAuthMode('login');
+}
+$('#btnLogout').addEventListener('click', logout);
+
+/* ============================ DATA CONTOH ============================ */
+function seedData(){
+  return [
+    {id:uid(),nama:'Gate Utama 01',ip:'192.168.1.101',portHttp:80,portRtsp:554,brand:'Hikvision',kategori:'CCTV',cluster:'Main Gate',zona:'Main Gate',status:'Online',lat:'-6.2235',lng:'106.6065',ipStatus:'Used',foto:null,seri:'DS-2CD2143G2-I',tipeKamera:'Dome',resolusi:'4MP (2560×1440)',lensa:'2.8',ir:'30',fitur:'WDR 120dB, IP67, deteksi manusia',serial:'SN-HK-0001',mac:'A4:14:37:11:22:33',firmware:'V5.7.3',daya:'PoE (802.3af)',tglPasang:'2025-03-14',garansi:'2028-03-14',catatan:'Menghadap gerbang keluar, kabel lewat tray utara.'},
+    {id:uid(),nama:'Lobby Timur',ip:'192.168.1.102',portHttp:80,portRtsp:554,brand:'Dahua',kategori:'CCTV',cluster:'Commercial Area',zona:'Zone A',status:'Online',lat:'-6.2252',lng:'106.6089',ipStatus:'Used',foto:null,seri:'IPC-HDW3441T-ZAS',tipeKamera:'Turret',resolusi:'4MP (2560×1440)',lensa:'2.7–13.5 motorized',ir:'40',fitur:'Starlight, audio 2 arah',serial:'SN-DH-0014',mac:'E0:50:8B:44:55:66',firmware:'V2.840',daya:'PoE (802.3af)',tglPasang:'2025-05-02',garansi:'2028-05-02',catatan:''},
+    {id:uid(),nama:'Parkir Basement B2',ip:'192.168.1.115',portHttp:8080,portRtsp:554,brand:'Hikvision',kategori:'CCTV',cluster:'Commercial Area',zona:'Parkir',status:'Offline',lat:'-6.2268',lng:'106.6072',ipStatus:'Used',foto:null,seri:'DS-2CD2T47G2-L',tipeKamera:'Bullet',resolusi:'4MP (2560×1440)',lensa:'4',ir:'60',fitur:'ColorVu, IP67',serial:'SN-HK-0032',mac:'A4:14:37:77:88:99',firmware:'V5.7.1',daya:'PoE (802.3af)',tglPasang:'2024-11-20',garansi:'2026-11-20',catatan:'Offline sejak pemadaman panel B2.'},
+    {id:uid(),nama:'Jasmine Pos 2',ip:'192.168.1.120',portHttp:80,portRtsp:554,brand:'EZVIZ',kategori:'CCTV',cluster:'Cluster Jasmine',zona:'Zone B',status:'Maintenance',lat:'-6.2201',lng:'106.6118',ipStatus:'Used',foto:null,seri:'CS-H8c',tipeKamera:'PTZ',resolusi:'2MP (1920×1080)',lensa:'4',ir:'30',fitur:'Pan-tilt 360°, sirene, Wi-Fi',serial:'SN-EZ-0007',mac:'BC:5A:56:01:02:03',firmware:'V5.3.5',daya:'12V DC',tglPasang:'2025-07-11',garansi:'2026-07-11',catatan:'Jadwal maintenance: ganti adaptor.'},
+    {id:uid(),nama:'Jasmine Taman Tengah',ip:'192.168.1.121',portHttp:80,portRtsp:554,brand:'EZVIZ',kategori:'CCTV',cluster:'Cluster Jasmine',zona:'Zone B',status:'Online',lat:'-6.2189',lng:'106.6131',ipStatus:'Used',foto:null,seri:'CS-C6N',tipeKamera:'Dome',resolusi:'2MP (1920×1080)',lensa:'4',ir:'10',fitur:'Auto-tracking, Wi-Fi',serial:'SN-EZ-0021',mac:'BC:5A:56:04:05:06',firmware:'V5.3.5',daya:'12V DC',tglPasang:'2025-07-11',garansi:'2026-07-11',catatan:''},
+    {id:uid(),nama:'Server Room Rack A',ip:'10.10.20.10',portHttp:443,portRtsp:0,brand:'Axis',kategori:'CCTV',cluster:'Main Gate',zona:'Server Room',status:'Online',lat:'-6.2241',lng:'106.6051',ipStatus:'Used',foto:null,seri:'M3085-V',tipeKamera:'Dome',resolusi:'2MP (1920×1080)',lensa:'2.8',ir:'15',fitur:'Zipstream, WDR',serial:'SN-AX-0003',mac:'AC:CC:8E:aa:bb:cc',firmware:'11.6.94',daya:'PoE (802.3af)',tglPasang:'2024-02-08',garansi:'2029-02-08',catatan:'Rekaman 90 hari, prioritas tinggi.'},
+    {id:uid(),nama:'NVR Pusat 32CH',ip:'10.10.20.5',portHttp:80,portRtsp:554,brand:'Hikvision',kategori:'NVR',cluster:'Main Gate',zona:'Server Room',status:'Online',lat:'-6.2241',lng:'106.6052',ipStatus:'Used',foto:null,seri:'DS-7732NXI-K4',tipeKamera:'',resolusi:'',lensa:'',ir:'',fitur:'32 channel, 4 HDD bay, AcuSense',serial:'SN-NVR-0001',mac:'A4:14:37:ff:ee:dd',firmware:'V4.61.025',daya:'12V DC',tglPasang:'2024-02-08',garansi:'2027-02-08',catatan:'4×8TB Purple, retensi 30 hari.'},
+    {id:uid(),nama:'Switch Distribusi 01',ip:'10.10.20.2',portHttp:80,portRtsp:0,brand:'Cisco',kategori:'Switch',cluster:'Main Gate',zona:'Server Room',status:'Online',lat:'-6.2240',lng:'106.6053',ipStatus:'Reserved',foto:null,seri:'CBS350-24P-4G',tipeKamera:'',resolusi:'',lensa:'',ir:'',fitur:'24 port PoE+ 195W, managed',serial:'SN-SW-0001',mac:'00:1A:2B:3C:4D:5E',firmware:'3.3.0.16',daya:'PoE+ (802.3at)',tglPasang:'2024-02-08',garansi:'2029-02-08',catatan:'Budget PoE terpakai ~120W.'}
+  ];
+}
+
+/* ============================ STATE & FILTER ============================ */
+let state = { tab:'monitor', view:'grid', q:'', cluster:'', zona:'', brand:'', status:'', sort:{key:'nama',dir:1} };
+let map, markerLayer, pendingFoto = null;
+
+function filtered(){
+  const q = state.q.trim().toLowerCase();
+  return devices.filter(d=>{
+    if(state.cluster && d.cluster!==state.cluster) return false;
+    if(state.zona    && d.zona   !==state.zona)    return false;
+    if(state.brand   && d.brand  !==state.brand)   return false;
+    if(state.status  && d.status !==state.status)  return false;
+    if(!q) return true;
+    return [d.nama,d.ip,d.cluster,d.zona,d.brand,d.kategori,d.seri,d.serial,d.mac,d.resolusi]
+      .filter(Boolean).join(' ').toLowerCase().includes(q);
+  });
+}
+const uniq = k => [...new Set(devices.map(d=>d[k]).filter(Boolean))].sort();
+
+/* ============================ RENDER ============================ */
+function renderStats(){
+  const f = filtered(), c = s=>f.filter(d=>d.status===s).length;
+  const segs = new Set(f.map(d=>segOf(d.ip)).filter(s=>s!=='—')).size;
+  $('#stats').innerHTML = [['Total device',f.length,'text-white'],['Online',c('Online'),'text-on'],
+    ['Offline',c('Offline'),'text-off'],['Maintenance',c('Maintenance'),'text-maint'],['Segmen IP aktif',segs,'text-cyan2']]
+    .map(([l,v,cl])=>`<div class="bg-ink-700 border border-line rounded px-3 py-2 grid-bg"><div class="text-[11px] text-slate-500">${l}</div><div class="text-2xl font-bold font-mono ${cl}">${v}</div></div>`).join('');
+}
+function fillFilters(){
+  const set=(id,label,key,val)=>{ $(id).innerHTML = `<option value="">${label}</option>` +
+    (key==='__status'?STATUS:uniq(key)).map(v=>`<option ${v===val?'selected':''}>${esc(v)}</option>`).join(''); };
+  set('#fCluster','Semua cluster','cluster',state.cluster);
+  set('#fZona','Semua zona','zona',state.zona);
+  set('#fBrand','Semua brand','brand',state.brand);
+  set('#fStatus','Semua status','__status',state.status);
+  $('#clusterList').innerHTML = uniq('cluster').map(v=>`<option>${esc(v)}</option>`).join('');
+}
+function thumb(d,cls){
+  return d.foto ? `<img src="${esc(d.foto)}" alt="View ${esc(d.nama)}" class="${cls} object-cover">`
+                : `<div class="${cls} grid place-items-center bg-ink-700 text-slate-600"><i data-lucide="camera-off" class="w-5 h-5"></i></div>`;
+}
+const badge = t => `<span class="text-[11px] px-1.5 py-0.5 rounded bg-ink-600 border border-line text-slate-300">${esc(t)}</span>`;
+
+function renderGrid(){
+  const f = filtered();
+  $('#viewGrid').innerHTML = f.length ? f.map(d=>`
+    <article class="bg-ink-800 border border-line rounded overflow-hidden hover:border-cyan2/50">
+      <div class="relative">${thumb(d,'w-full h-36')}
+        <div class="absolute top-2 left-2 flex gap-1.5">${badge(d.cluster)}${badge(d.zona)}</div>
+        <div class="absolute top-2 right-2 bg-ink-900/85 rounded px-2 py-0.5">${statusPill(d.status)}</div>
+      </div>
+      <div class="p-3">
+        <h3 class="font-semibold text-white truncate">${esc(d.nama)}</h3>
+        <div class="font-mono text-xs text-cyan2 mt-0.5">${esc(d.ip)}<span class="text-slate-500">:${esc(d.portHttp)}</span></div>
+        <div class="text-xs text-slate-500 mt-1 truncate">${esc(d.brand||'—')} <span class="text-slate-700">|</span> ${esc(d.seri||d.kategori||'CCTV')}</div>
+        <div class="text-xs text-slate-600 mt-0.5 truncate">${[d.tipeKamera,d.resolusi,d.lensa&&d.lensa+'mm'].filter(Boolean).map(esc).join(' · ')||'&nbsp;'}</div>
+        <div class="flex gap-1.5 mt-3">
+          <button data-act="detail" data-id="${d.id}" class="flex-1 py-1.5 rounded bg-ink-700 border border-line text-xs hover:border-cyan2">Detail</button>
+          <button data-act="edit" data-id="${d.id}" aria-label="Edit" class="px-2.5 py-1.5 rounded bg-ink-700 border border-line hover:border-cyan2"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+          <button data-act="del" data-id="${d.id}" aria-label="Hapus" class="px-2.5 py-1.5 rounded bg-ink-700 border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+        </div>
+      </div>
+    </article>`).join('')
+    : `<div class="col-span-full border border-dashed border-line rounded p-10 text-center text-slate-500">
+         <p class="mb-3">Belum ada device yang cocok. Tambahkan device, impor CSV, atau muat data contoh dari menu.</p>
+       </div>`;
+}
+function renderList(){
+  const cols = [['nama','Nama'],['ip','IP'],['cluster','Cluster'],['zona','Zona'],['brand','Brand'],
+                ['seri','Seri / model'],['resolusi','Resolusi'],['lensa','Lensa'],['lat','Koordinat'],['status','Status']];
+  const f = filtered().sort((a,b)=>{ const k=state.sort.key;
+    const va=(a[k]??'').toString().toLowerCase(), vb=(b[k]??'').toString().toLowerCase();
+    return va<vb?-state.sort.dir:va>vb?state.sort.dir:0; });
+  $('#viewList').innerHTML = `<table class="w-full text-sm min-w-[920px]">
+    <thead class="bg-ink-700 text-slate-400"><tr><th class="p-2.5 text-left w-16">View</th>
+      ${cols.map(([k,l])=>`<th class="p-2.5 text-left sortable" data-sort="${k}">${l}${state.sort.key===k?(state.sort.dir>0?' ▲':' ▼'):''}</th>`).join('')}
+      <th class="p-2.5 text-right">Aksi</th></tr></thead>
+    <tbody>${f.length?f.map(d=>`<tr class="border-t border-line hover:bg-ink-700/50">
+      <td class="p-2">${thumb(d,'w-14 h-10 rounded')}</td>
+      <td class="p-2.5 font-medium text-white">${esc(d.nama)}</td>
+      <td class="p-2.5 font-mono text-cyan2">${esc(d.ip)}<span class="text-slate-600">:${esc(d.portHttp)}</span></td>
+      <td class="p-2.5">${esc(d.cluster)}</td><td class="p-2.5">${esc(d.zona)}</td>
+      <td class="p-2.5 text-slate-400">${esc(d.brand)}</td>
+      <td class="p-2.5 font-mono text-xs text-slate-300">${esc(d.seri||'—')}</td>
+      <td class="p-2.5 text-slate-400">${esc(d.resolusi||'—')}</td>
+      <td class="p-2.5 text-slate-400">${esc(d.lensa?d.lensa+' mm':'—')}</td>
+      <td class="p-2.5 font-mono text-xs text-slate-400">${esc(d.lat||'—')}, ${esc(d.lng||'—')}</td>
+      <td class="p-2.5">${statusPill(d.status)}</td>
+      <td class="p-2.5 text-right whitespace-nowrap">
+        <button data-act="detail" data-id="${d.id}" aria-label="Detail" class="px-2 py-1 rounded border border-line hover:border-cyan2"><i data-lucide="eye" class="w-3.5 h-3.5"></i></button>
+        <button data-act="edit" data-id="${d.id}" aria-label="Edit" class="px-2 py-1 rounded border border-line hover:border-cyan2"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+        <button data-act="del" data-id="${d.id}" aria-label="Hapus" class="px-2 py-1 rounded border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+      </td></tr>`).join('') : `<tr><td colspan="12" class="p-8 text-center text-slate-500">Tidak ada data yang cocok.</td></tr>`}
+    </tbody></table>`;
+}
+function initMap(){
+  if(map) return;
+  map = L.map('map').setView([-6.2235,106.6080],14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+  markerLayer = L.layerGroup().addTo(map);
+}
+function renderMap(){
+  initMap(); markerLayer.clearLayers();
+  const pts = [];
+  filtered().filter(d=>d.lat!=='' && d.lng!=='' && Number.isFinite(+d.lat) && Number.isFinite(+d.lng)).forEach(d=>{
+    const icon = L.divIcon({className:'',iconSize:[18,18],iconAnchor:[9,9],html:`<div class="pin pin-${tone(d.status)}"></div>`});
+    L.marker([+d.lat,+d.lng],{icon}).bindPopup(`<div style="min-width:210px">
+      ${d.foto?`<img src="${esc(d.foto)}" alt="" style="width:100%;height:110px;object-fit:cover;border-radius:6px;margin-bottom:8px">`:''}
+      <div style="font-weight:700;color:#fff">${esc(d.nama)}</div>
+      <div style="font-family:monospace;color:#22d3ee;font-size:12px">${esc(d.ip)}:${esc(d.portHttp)}</div>
+      <div style="font-size:12px;color:#94a3b8;margin-top:4px">${esc(d.cluster)} &middot; ${esc(d.zona)}</div>
+      <div style="font-size:11px;color:#64748b">${[d.brand,d.seri,d.resolusi].filter(Boolean).map(esc).join(' · ')}</div>
+      <div style="margin-top:6px">${statusPill(d.status)}</div>
+      <button data-act="detail" data-id="${d.id}" style="margin-top:8px;width:100%;padding:5px;border-radius:5px;background:#1d2832;border:1px solid #223040;color:#d7e3ee;font-size:12px;cursor:pointer">Lihat detail &amp; spek</button>
+    </div>`).addTo(markerLayer);
+    pts.push([+d.lat,+d.lng]);
+  });
+  setTimeout(()=>{ map.invalidateSize(); if(pts.length) map.fitBounds(L.latLngBounds(pts).pad(.25),{maxZoom:17}); },60);
+}
+function renderIpdb(){
+  const f = filtered(), segs = {};
+  f.forEach(d=>{ const s=segOf(d.ip); if(s!=='—') (segs[s] ||= []).push(d); });
+  const keys = Object.keys(segs).sort();
+  $('#segments').innerHTML = keys.length ? keys.map(s=>{
+    const list = segs[s], used = new Set(list.map(d=>hostOf(d.ip))).size;
+    const pct = Math.round(used/254*100), bar = pct>80?'bg-off':pct>50?'bg-maint':'bg-on';
+    const off = list.filter(d=>d.status==='Offline').length;
+    return `<div class="bg-ink-800 border border-line rounded p-4">
+      <div class="flex items-baseline justify-between"><div class="font-mono font-semibold text-cyan2">${s}.0/24</div>
+        <div class="font-mono text-sm"><span class="text-white font-bold">${used}</span><span class="text-slate-500">/254</span></div></div>
+      <div class="h-2 bg-ink-600 rounded mt-2.5 overflow-hidden"><div class="h-full ${bar}" style="width:${Math.max(pct,1)}%"></div></div>
+      <div class="flex justify-between text-xs text-slate-500 mt-2"><span>${pct}% terpakai &middot; ${254-used} IP bebas</span>
+        <span>${off?`<span class="text-off">${off} offline</span>`:'semua terjangkau'}</span></div>
+      <button data-seg="${s}" class="segpick mt-3 text-xs text-cyan2 hover:underline">Cari IP kosong di segmen ini</button></div>`;
+  }).join('') : `<div class="col-span-full text-slate-500 text-sm border border-dashed border-line rounded p-6 text-center">Belum ada IP valid untuk dipetakan.</div>`;
+
+  const sorted = [...f].sort((a,b)=>{ const sa=segOf(a.ip), sb=segOf(b.ip);
+    return sa===sb ? hostOf(a.ip)-hostOf(b.ip) : sa.localeCompare(sb); });
+  $('#ipTable').innerHTML = `<table class="w-full text-sm min-w-[780px]">
+    <thead class="bg-ink-700 text-slate-400"><tr><th class="p-2.5 text-left">IP address</th><th class="p-2.5 text-left">Nama device</th>
+      <th class="p-2.5 text-left">Cluster</th><th class="p-2.5 text-left">Zona</th><th class="p-2.5 text-left">Kategori</th>
+      <th class="p-2.5 text-left">Status IP</th><th class="p-2.5 text-left">Perangkat</th></tr></thead>
+    <tbody>${sorted.length?sorted.map(d=>`<tr class="border-t border-line hover:bg-ink-700/50">
+      <td class="p-2.5 font-mono text-cyan2">${esc(d.ip)}</td><td class="p-2.5 text-white">${esc(d.nama)}</td>
+      <td class="p-2.5">${esc(d.cluster)}</td><td class="p-2.5">${esc(d.zona)}</td>
+      <td class="p-2.5 text-slate-400">${esc(d.kategori||'CCTV')}</td>
+      <td class="p-2.5"><span class="text-xs px-1.5 py-0.5 rounded border ${d.ipStatus==='Reserved'?'border-maint text-maint':'border-on/50 text-on'}">${esc(d.ipStatus||'Used')}</span></td>
+      <td class="p-2.5">${statusPill(d.status)}</td></tr>`).join('') : `<tr><td colspan="7" class="p-8 text-center text-slate-500">Belum ada IP terdaftar.</td></tr>`}
+    </tbody></table>`;
+  $('#segQuick').innerHTML = keys.map(s=>`<button data-seg="${s}" class="segpick text-xs font-mono px-2 py-1 rounded bg-ink-700 border border-line hover:border-cyan2">${s}</button>`).join('');
+}
+function scanFree(seg){
+  seg = (seg||'').trim().replace(/\.$/,'');
+  if(!/^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(seg) || seg.split('.').some(o=>+o>255)){
+    $('#scanResult').innerHTML = `<p class="text-sm text-off">Format segmen salah. Masukkan tiga oktet, contoh 192.168.1</p>`; return; }
+  const used = new Set(devices.filter(d=>segOf(d.ip)===seg).map(d=>hostOf(d.ip)));
+  const free = []; for(let i=1;i<=254;i++) if(!used.has(i)) free.push(i);
+  const show = free.slice(0,120);
+  $('#scanResult').innerHTML = `<div class="text-sm mb-2"><span class="font-mono text-cyan2">${seg}.0/24</span> — <span class="text-white font-bold">${free.length}</span> IP belum tercatat, ${used.size} terpakai.</div>
+    <div class="max-h-72 overflow-y-auto grid grid-cols-2 gap-1.5 pr-1">${show.map(h=>`<button data-useip="${seg}.${h}" class="useip text-left font-mono text-xs px-2 py-1.5 rounded bg-ink-700 border border-line hover:border-cyan2 hover:text-cyan2">${seg}.${h}</button>`).join('')}</div>
+    ${free.length>show.length?`<p class="text-xs text-slate-500 mt-2">Menampilkan ${show.length} pertama dari ${free.length}.</p>`:''}`;
+}
+function render(){
+  fillFilters(); renderStats();
+  $('#filterCount').textContent = `${filtered().length} dari ${devices.length} device`;
+  $('#tab-monitor').hidden = state.tab!=='monitor';
+  $('#tab-ipdb').hidden    = state.tab!=='ipdb';
+  $('#viewSwitch').style.visibility = state.tab==='monitor'?'visible':'hidden';
+  $$('.tab-btn').forEach(b=>b.className=`tab-btn px-3 py-1.5 rounded text-sm font-semibold flex items-center gap-2 ${b.dataset.tab===state.tab?'bg-cyan2 text-ink-900':'text-slate-400 hover:text-white'}`);
+  $$('.view-btn').forEach(b=>b.className=`view-btn px-2.5 py-1.5 rounded text-sm flex items-center gap-1.5 ${b.dataset.view===state.view?'bg-cyan2 text-ink-900 font-bold':'text-slate-400 hover:text-white'}`);
+  if(state.tab==='monitor'){
+    $('#viewGrid').hidden = state.view!=='grid';
+    $('#viewList').hidden = state.view!=='list';
+    $('#viewMap').hidden  = state.view!=='map';
+    if(state.view==='grid') renderGrid();
+    if(state.view==='list') renderList();
+    if(state.view==='map')  renderMap();
+  } else renderIpdb();
+  lucide.createIcons();
+}
+
+/* ============================ SPEC & DETAIL ============================ */
+/* [kunci JS, label tampilan, kolom CSV/Postgres] */
+const SPEC = [
+  ['seri','Seri / model','seri'],
+  ['tipeKamera','Bentuk kamera','tipe_kamera'],
+  ['resolusi','Resolusi','resolusi'],
+  ['lensa','Lensa (mm)','lensa_mm'],
+  ['ir','Jangkauan IR (m)','ir_m'],
+  ['fitur','Fitur','fitur'],
+  ['serial','Serial number','serial_number'],
+  ['mac','MAC address','mac'],
+  ['firmware','Firmware','firmware'],
+  ['daya','Sumber daya','daya'],
+  ['tglPasang','Tanggal pasang','tgl_pasang'],
+  ['garansi','Garansi sampai','garansi_sampai']
+];
+const MONO = new Set(['seri','serial','mac','firmware','ir']);
+
+function garansiNote(d){
+  if(!d.garansi) return '';
+  const sisa = Math.round((new Date(d.garansi) - new Date())/86400000);
+  return sisa < 0 ? ` <span class="text-off">(habis ${Math.abs(sisa)} hari lalu)</span>`
+       : sisa < 90 ? ` <span class="text-maint">(sisa ${sisa} hari)</span>`
+                   : ` <span class="text-slate-500">(sisa ${sisa} hari)</span>`;
+}
+function openDetail(id){
+  const d = devices.find(x=>x.id===id); if(!d) return;
+  const isi = SPEC.filter(([k])=>d[k]);
+  $('#detailTitle').innerHTML = `${esc(d.nama)} ${statusPill(d.status)}`;
+  $('#detailBody').innerHTML = `
+    <div class="grid gap-4 md:grid-cols-[260px_1fr]">
+      <div>
+        ${d.foto ? `<img src="${esc(d.foto)}" alt="View ${esc(d.nama)}" class="w-full rounded border border-line">`
+                 : `<div class="w-full h-40 rounded border border-dashed border-line grid place-items-center text-slate-600 text-xs">belum ada foto view</div>`}
+        <div class="mt-3 space-y-1 text-sm">
+          <div class="font-mono text-cyan2">${esc(d.ip)}<span class="text-slate-500">:${esc(d.portHttp)}</span></div>
+          <div class="font-mono text-xs text-slate-500">rtsp://${esc(d.ip)}:${esc(d.portRtsp||554)}</div>
+          <div class="text-slate-400">${esc(d.cluster)} &middot; ${esc(d.zona)}</div>
+          <div class="font-mono text-xs text-slate-500">${esc(d.lat||'—')}, ${esc(d.lng||'—')}</div>
+        </div>
+      </div>
+      <div>
+        <div class="grid sm:grid-cols-2 gap-x-5">
+          ${[['Brand',d.brand],['Kategori',d.kategori],['Status IP',d.ipStatus]]
+            .map(([l,v])=>`<div class="py-1.5 border-b border-line/70 flex justify-between gap-3 text-sm">
+              <span class="text-slate-500">${l}</span><span class="text-right">${esc(v||'—')}</span></div>`).join('')}
+          ${isi.map(([k,l])=>`<div class="py-1.5 border-b border-line/70 flex justify-between gap-3 text-sm">
+            <span class="text-slate-500">${l}</span>
+            <span class="text-right ${MONO.has(k)?'font-mono text-xs':''}">${esc(d[k])}${k==='garansi'?garansiNote(d):''}</span></div>`).join('')}
+        </div>
+        ${isi.length < SPEC.length ? `<p class="text-xs text-slate-600 mt-2">${SPEC.length-isi.length} field spesifikasi belum diisi.</p>` : ''}
+        ${d.catatan ? `<div class="mt-3 text-sm"><div class="text-slate-500 mb-1">Catatan teknisi</div><p class="leading-relaxed">${esc(d.catatan)}</p></div>` : ''}
+        <div class="flex gap-2 mt-4">
+          <a href="http://${esc(d.ip)}:${esc(d.portHttp)}" target="_blank" rel="noopener"
+             class="px-3 py-2 rounded border border-line text-sm hover:border-cyan2 flex items-center gap-1.5">
+             <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Buka web kamera</a>
+          <button data-act="edit" data-id="${d.id}" class="px-3 py-2 rounded bg-cyan2 text-ink-900 font-bold text-sm">Edit device</button>
+        </div>
+      </div>
+    </div>`;
+  $('#detail').hidden = false;
+  lucide.createIcons();
+}
+const closeDetail = () => $('#detail').hidden = true;
+$('#detailClose').addEventListener('click', closeDetail);
+$('#detail').addEventListener('click', e=>{ if(e.target.id==='detail') closeDetail(); });
+
+/* ============================ FORM ============================ */
+function openForm(id, prefillIp){
+  closeDetail();
+  const d = devices.find(x=>x.id===id);
+  $('#modalTitle').textContent = d?'Edit device':'Tambah device';
+  $('#f_id').value = d?.id || '';
+  $('#f_nama').value = d?.nama || '';
+  $('#f_ip').value = d?.ip || prefillIp || '';
+  $('#f_porthttp').value = d?.portHttp ?? 80;
+  $('#f_portrtsp').value = d?.portRtsp ?? 554;
+  $('#f_brand').value = d?.brand || '';
+  $('#f_kategori').value = d?.kategori || 'CCTV';
+  $('#f_cluster').value = d?.cluster || '';
+  $('#f_zona').value = d?.zona || '';
+  $('#f_status').value = d?.status || 'Online';
+  $('#f_ipstatus').value = d?.ipStatus || 'Used';
+  $('#f_lat').value = d?.lat ?? '';
+  $('#f_lng').value = d?.lng ?? '';
+  SPEC.forEach(([k])=>{ $('#f_'+k.toLowerCase()).value = d?.[k] ?? ''; });
+  $('#f_catatan').value = d?.catatan || '';
+  $('#seriList').innerHTML = uniq('seri').map(v=>`<option>${esc(v)}</option>`).join('');
+  pendingFoto = d?.foto || null; paintFoto(); $('#f_foto').value='';
+  $('#modal').hidden = false; lucide.createIcons();
+  setTimeout(()=>$('#f_nama').focus(),30);
+}
+function paintFoto(){ $('#fotoPrev').innerHTML = pendingFoto ? `<img src="${esc(pendingFoto)}" alt="" class="w-full h-full object-cover">` : 'belum ada foto'; }
+const closeForm = () => $('#modal').hidden = true;
+
+$('#f_foto').addEventListener('change', e=>{
+  const file = e.target.files[0]; if(!file) return;
+  const r = new FileReader();
+  r.onload = ev=>{ const img = new Image();
+    img.onload = ()=>{ const sc = Math.min(1,720/img.width), cv = document.createElement('canvas');
+      cv.width = Math.round(img.width*sc); cv.height = Math.round(img.height*sc);
+      cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+      pendingFoto = cv.toDataURL('image/jpeg',.72); paintFoto(); };
+    img.onerror = ()=>toast('File gambar tidak terbaca.','err');
+    img.src = ev.target.result; };
+  r.readAsDataURL(file);
+});
+$('#fotoClear').addEventListener('click', ()=>{ pendingFoto=null; $('#f_foto').value=''; paintFoto(); });
+
+$('#form').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const ip = $('#f_ip').value.trim();
+  if(!isIp(ip)){ toast('Alamat IP tidak valid. Contoh: 192.168.1.101','err'); return; }
+  const id = $('#f_id').value;
+  const dup = devices.find(d=>d.ip===ip && d.id!==id);
+  if(dup && !confirm(`IP ${ip} sudah dipakai "${dup.nama}". Tetap simpan?`)) return;
+  const rec = { id: id || (CLOUD ? crypto.randomUUID() : uid()),
+    nama:$('#f_nama').value.trim(), ip, portHttp:+$('#f_porthttp').value||80, portRtsp:+$('#f_portrtsp').value||0,
+    brand:$('#f_brand').value.trim(), kategori:$('#f_kategori').value,
+    cluster:$('#f_cluster').value.trim()||'Tanpa cluster', zona:$('#f_zona').value.trim()||'Tanpa zona',
+    status:$('#f_status').value, ipStatus:$('#f_ipstatus').value,
+    lat:$('#f_lat').value.trim(), lng:$('#f_lng').value.trim(), foto:pendingFoto,
+    catatan:$('#f_catatan').value.trim() };
+  SPEC.forEach(([k])=>{ rec[k] = $('#f_'+k.toLowerCase()).value.trim(); });
+  try{ await api.upsert(rec); closeForm(); await reload(); toast(id?'Perubahan tersimpan.':'Device ditambahkan.'); }
+  catch(err){ toast('Gagal menyimpan: '+(err.message||err),'err'); }
+});
+
+/* ============================ CSV ============================ */
+const HEADER = ['nama','ip','port','brand','cluster','zona','status','latitude','longitude'];
+const EXTRA  = ['port_rtsp','kategori','ip_status', ...SPEC.map(s=>s[2]), 'catatan'];
+function dl(name, content){ const a=document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content],{type:'text/csv;charset=utf-8'})); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
+const csvCell = v => { const s=String(v??''); return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; };
+
+$('#btnTemplate').addEventListener('click', ()=>{
+  dl('template-cctv.csv',[HEADER.concat(EXTRA).join(','),
+    'Gate Utama 01,192.168.1.101,80,Hikvision,Main Gate,Main Gate,Online,-6.223500,106.606500,554,CCTV,Used,DS-2CD2143G2-I,Dome,4MP (2560×1440),2.8,30,"WDR 120dB, IP67",SN-HK-0001,A4:14:37:11:22:33,V5.7.3,PoE (802.3af),2025-03-14,2028-03-14,Menghadap gerbang keluar',
+    'Lobby Timur,192.168.1.102,80,Dahua,Commercial Area,Zone A,Online,-6.225200,106.608900,554,CCTV,Used,IPC-HDW3441T-ZAS,Turret,4MP (2560×1440),2.7–13.5 motorized,40,"Starlight, audio",SN-DH-0014,E0:50:8B:44:55:66,V2.840,PoE (802.3af),2025-05-02,2028-05-02,'].join('\n'));
+  toast('Template diunduh. Tiga kolom terakhir opsional.');
+});
+$('#btnExport').addEventListener('click', ()=>{
+  const rows = [HEADER.concat(EXTRA).join(',')];
+  devices.forEach(d=>rows.push([d.nama,d.ip,d.portHttp,d.brand,d.cluster,d.zona,d.status,d.lat,d.lng,
+    d.portRtsp,d.kategori,d.ipStatus, ...SPEC.map(s=>d[s[0]]), d.catatan].map(csvCell).join(',')));
+  dl(`cctv-export-${new Date().toISOString().slice(0,10)}.csv`, rows.join('\n'));
+  toast(`${devices.length} baris diekspor. Foto tidak ikut dalam CSV.`,'warn');
+});
+$('#btnImport').addEventListener('click', ()=>$('#fileCsv').click());
+$('#fileCsv').addEventListener('change', e=>{ const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader(); r.onload=ev=>{ importCsv(ev.target.result); $('#fileCsv').value=''; }; r.readAsText(f); });
+
+function parseCsvLine(line){
+  const out=[]; let cur='', q=false;
+  for(let i=0;i<line.length;i++){ const ch=line[i];
+    if(q){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
+    else if(ch==='"') q=true; else if(ch===','){ out.push(cur); cur=''; } else cur+=ch; }
+  out.push(cur); return out.map(s=>s.trim());
+}
+async function importCsv(text){
+  const lines = text.split(/\r?\n/).filter(l=>l.trim());
+  if(lines.length<2){ toast('File CSV kosong.','err'); return; }
+  const head = parseCsvLine(lines[0]).map(h=>h.toLowerCase().replace(/\s+/g,'_'));
+  if(!head.includes('nama')||!head.includes('ip')){ toast('Header wajib memuat kolom nama dan ip.','err'); return; }
+  const g = (c,k)=> head.indexOf(k)>-1 ? (c[head.indexOf(k)]??'') : '';
+  const batch=[]; let skip=0;
+  lines.slice(1).forEach(l=>{
+    const c = parseCsvLine(l), ip = g(c,'ip');
+    if(!isIp(ip)){ skip++; return; }
+    const ex = devices.find(d=>d.ip===ip);
+    batch.push({ id: ex?.id || (CLOUD?crypto.randomUUID():uid()), nama:g(c,'nama')||ip, ip,
+      portHttp:+g(c,'port')||80, portRtsp:+g(c,'port_rtsp')||554, brand:g(c,'brand'),
+      kategori:g(c,'kategori')||'CCTV', cluster:g(c,'cluster')||'Tanpa cluster', zona:g(c,'zona')||'Tanpa zona',
+      status:STATUS.find(s=>s.toLowerCase()===g(c,'status').toLowerCase())||'Offline',
+      ipStatus:g(c,'ip_status')||'Used', lat:g(c,'latitude'), lng:g(c,'longitude'), foto:ex?.foto||null,
+      catatan:g(c,'catatan'), ...Object.fromEntries(SPEC.map(([k,,col])=>[k, g(c,col)])) });
+  });
+  try{ await api.upsertMany(batch); await reload();
+    toast(`${batch.length} baris diproses${skip?`, ${skip} dilewati karena IP tidak valid`:''}.`, skip?'warn':'ok'); }
+  catch(err){ toast('Impor gagal: '+(err.message||err),'err'); }
+}
+
+/* ============================ EVENTS ============================ */
+document.addEventListener('click', async e=>{
+  const act = e.target.closest('[data-act]');
+  if(act){ const d = devices.find(x=>x.id===act.dataset.id); if(!d) return;
+    if(act.dataset.act==='detail') openDetail(d.id);
+    else if(act.dataset.act==='edit') openForm(d.id);
+    else if(confirm(`Hapus "${d.nama}" (${d.ip})?`)){
+      try{ await api.remove(d.id); await reload(); toast('Device dihapus.'); }
+      catch(err){ toast('Gagal menghapus: '+(err.message||err),'err'); } }
+    return; }
+  const seg = e.target.closest('.segpick');
+  if(seg){ $('#segInput').value = seg.dataset.seg; scanFree(seg.dataset.seg); return; }
+  const use = e.target.closest('.useip');
+  if(use){ openForm(null, use.dataset.useip); return; }
+  const sort = e.target.closest('[data-sort]');
+  if(sort){ const k=sort.dataset.sort; state.sort = {key:k, dir: state.sort.key===k?-state.sort.dir:1}; renderList(); lucide.createIcons(); return; }
+  if(!e.target.closest('#btnMore') && !e.target.closest('#menuMore')) $('#menuMore').hidden = true;
+});
+$('#btnMore').addEventListener('click', ()=>$('#menuMore').hidden = !$('#menuMore').hidden);
+$('#btnAdd').addEventListener('click', ()=>openForm());
+$('#modalClose').addEventListener('click', closeForm);
+$('#formCancel').addEventListener('click', closeForm);
+$('#modal').addEventListener('click', e=>{ if(e.target.id==='modal') closeForm(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeForm(); });
+$$('.tab-btn').forEach(b=>b.addEventListener('click',()=>{ state.tab=b.dataset.tab; render(); }));
+$$('.view-btn').forEach(b=>b.addEventListener('click',()=>{ state.view=b.dataset.view; render(); }));
+let t; $('#search').addEventListener('input', e=>{ clearTimeout(t); t=setTimeout(()=>{ state.q=e.target.value; render(); },180); });
+$('#fCluster').addEventListener('change',e=>{ state.cluster=e.target.value; render(); });
+$('#fZona').addEventListener('change',   e=>{ state.zona=e.target.value; render(); });
+$('#fBrand').addEventListener('change',  e=>{ state.brand=e.target.value; render(); });
+$('#fStatus').addEventListener('change', e=>{ state.status=e.target.value; render(); });
+$('#fReset').addEventListener('click', ()=>{ state.q=state.cluster=state.zona=state.brand=state.status=''; $('#search').value=''; render(); });
+$('#btnScan').addEventListener('click', ()=>scanFree($('#segInput').value));
+$('#segInput').addEventListener('keydown', e=>{ if(e.key==='Enter') scanFree($('#segInput').value); });
+$('#btnSeed').addEventListener('click', async ()=>{
+  if(!confirm('Tambahkan 8 data contoh ke database Anda?')) return;
+  try{ await api.upsertMany(seedData()); await reload(); toast('Data contoh dimuat.'); }
+  catch(err){ toast('Gagal: '+(err.message||err),'err'); }
+});
+$('#btnWipe').addEventListener('click', async ()=>{
+  if(!confirm('Hapus seluruh device milik akun ini? Tidak bisa dibatalkan.')) return;
+  try{ await api.wipe(); await reload(); toast('Database dikosongkan.','warn'); }
+  catch(err){ toast('Gagal: '+(err.message||err),'err'); }
+});
+setInterval(()=>{ const c=$('#clock'); if(c) c.textContent = new Date().toLocaleTimeString('id-ID'); },1000);
+
+/* ============================ BOOT ============================ */
+(async function boot(){
+  setAuthMode('login');
+  $('#localNote').innerHTML = CLOUD
+    ? 'Terhubung ke Supabase. Setiap akun hanya melihat datanya sendiri (Row Level Security).'
+    : 'Mode lokal aktif: akun dan data disimpan di browser ini saja dan <strong class="text-maint">bukan pengamanan sungguhan</strong>. Isi SUPABASE_URL dan SUPABASE_ANON_KEY di bagian atas file untuk multi-user.';
+  if(CLOUD){
+    const { data } = await sb.auth.getSession();
+    if(data.session){ session = { email:data.session.user.email, id:data.session.user.id }; await enterApp(); }
+  }else{
+    const e = localStorage.getItem('sentra_session');
+    if(e && accounts.all()[e]){ session = {email:e, id:e}; await enterApp(); }
+  }
+  lucide.createIcons();
+})();
+</script>
+</body>
+</html>
