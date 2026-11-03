@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Sentra NOC — Monitoring CCTV &amp; Database IP</title>
+<title>CCTV TMD — Monitoring CCTV &amp; Database IP</title>
 
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -16,10 +16,10 @@
 
 <script>
 /* =====================================================================
-   KONFIGURASI BACKEND
+   CCTV TMD — KONFIGURASI BACKEND
    Kosongkan keduanya  -> mode LOKAL (localStorage, akun demo di browser)
    Isi keduanya        -> mode SUPABASE (auth + Postgres, multi-user)
-   Jalankan supabase-setup.sql di SQL Editor Supabase lebih dulu.
+   Jalankan supabase-setup-team.sql di SQL Editor Supabase lebih dulu.
 ===================================================================== */
 const SUPABASE_URL      = "";   // contoh: "https://abcdefgh.supabase.co"
 const SUPABASE_ANON_KEY = "";   // anon public key (bukan service_role)
@@ -88,7 +88,7 @@ tailwind.config = { theme: { extend: {
         <i data-lucide="radio-tower" class="w-6 h-6 text-cyan2"></i>
       </div>
       <div>
-        <div class="text-2xl font-bold text-white leading-none">SENTRA<span class="text-cyan2">NOC</span></div>
+        <div class="text-2xl font-bold text-white leading-none">CCTV <span class="text-cyan2">TMD</span></div>
         <div class="text-xs text-slate-500">Monitoring CCTV &amp; database IP</div>
       </div>
     </div>
@@ -115,6 +115,12 @@ tailwind.config = { theme: { extend: {
 
       <div id="localNote" class="mt-4 pt-4 border-t border-line text-xs text-slate-500 leading-relaxed"></div>
     </div>
+
+    <div id="pending" hidden class="bg-ink-800 border border-maint/50 rounded-lg p-5 mt-3">
+      <h2 class="font-bold text-maint mb-1">Menunggu persetujuan</h2>
+      <p class="text-sm text-slate-400 leading-relaxed">Akun <span id="pendingEmail" class="text-white"></span> sudah terdaftar tetapi belum diberi akses ke database CCTV TMD. Hubungi Administrator untuk diaktifkan sebagai Viewer atau IT User.</p>
+      <button id="pendingOut" class="mt-3 text-sm text-cyan2 hover:underline">Keluar dan masuk dengan akun lain</button>
+    </div>
   </div>
 </div>
 
@@ -128,7 +134,7 @@ tailwind.config = { theme: { extend: {
         <i data-lucide="radio-tower" class="w-5 h-5 text-cyan2"></i>
       </div>
       <div class="leading-none">
-        <div class="text-lg font-bold tracking-wide text-white">SENTRA<span class="text-cyan2">NOC</span></div>
+        <div class="text-lg font-bold tracking-wide text-white">CCTV <span class="text-cyan2">TMD</span></div>
         <div class="text-[11px] text-slate-500 font-mono" id="clock">--:--:--</div>
       </div>
     </div>
@@ -136,6 +142,7 @@ tailwind.config = { theme: { extend: {
     <nav class="flex gap-1 bg-ink-700 p-1 rounded border border-line">
       <button data-tab="monitor" class="tab-btn px-3 py-1.5 rounded text-sm font-semibold flex items-center gap-2"><i data-lucide="cctv" class="w-4 h-4"></i> Monitoring CCTV</button>
       <button data-tab="ipdb" class="tab-btn px-3 py-1.5 rounded text-sm font-semibold flex items-center gap-2"><i data-lucide="network" class="w-4 h-4"></i> Database IP</button>
+      <button data-tab="log" class="tab-btn px-3 py-1.5 rounded text-sm font-semibold flex items-center gap-2"><i data-lucide="history" class="w-4 h-4"></i> Riwayat</button>
     </nav>
 
     <div class="flex-1 min-w-[180px]">
@@ -159,6 +166,7 @@ tailwind.config = { theme: { extend: {
           <button id="btnExport" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="download" class="w-4 h-4 text-cyan2"></i> Ekspor semua data</button>
           <button id="btnSeed" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2 text-amber-400"><i data-lucide="refresh-cw" class="w-4 h-4"></i> Muat data contoh</button>
           <button id="btnWipe" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2 text-off"><i data-lucide="trash-2" class="w-4 h-4"></i> Hapus seluruh data</button>
+          <button id="btnTeam" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="users" class="w-4 h-4 text-cyan2"></i> Manajemen akun</button>
           <button id="btnLogout" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2 border-t border-line"><i data-lucide="log-out" class="w-4 h-4"></i> Keluar</button>
         </div>
       </div>
@@ -189,6 +197,16 @@ tailwind.config = { theme: { extend: {
     <div id="viewMap"  hidden class="border border-line rounded overflow-hidden">
       <div id="map" class="w-full" style="height:min(72vh,720px)"></div>
     </div>
+  </section>
+
+  <section id="tab-log" hidden>
+    <div class="flex flex-wrap items-center gap-2 mb-3">
+      <h2 class="text-base font-bold text-white flex items-center gap-2"><i data-lucide="history" class="w-4 h-4 text-cyan2"></i> Riwayat perubahan</h2>
+      <input id="logQ" placeholder="Saring: IP, email, atau aksi…" class="bg-ink-700 border border-line rounded px-3 py-1.5 text-sm w-64 focus:outline-none focus:border-cyan2">
+      <button id="logRefresh" class="px-2.5 py-1.5 text-sm rounded border border-line hover:border-cyan2 flex items-center gap-1.5"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Muat ulang</button>
+      <span id="logCount" class="text-sm text-slate-500 font-mono"></span>
+    </div>
+    <div id="logTable" class="overflow-x-auto border border-line rounded bg-ink-800"></div>
   </section>
 
   <section id="tab-ipdb" hidden class="space-y-5">
@@ -318,6 +336,17 @@ tailwind.config = { theme: { extend: {
   </div>
 </div>
 
+<!-- ================= ANGGOTA TIM ================= -->
+<div id="team" hidden class="fixed inset-0 z-[1000] bg-black/70 backdrop-blur-sm overflow-y-auto p-3 md:p-6">
+  <div class="max-w-2xl mx-auto bg-ink-800 border border-line rounded-lg shadow-2xl fade">
+    <div class="flex items-center justify-between px-5 py-3 border-b border-line">
+      <h3 class="font-bold text-white">Manajemen akun</h3>
+      <button id="teamClose" aria-label="Tutup" class="text-slate-400 hover:text-off"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <div id="teamBody" class="p-5"></div>
+  </div>
+</div>
+
 <div id="toast" class="fixed bottom-4 right-4 z-[2000] space-y-2"></div>
 
 <script>
@@ -346,7 +375,7 @@ const sb = CLOUD ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 let session = null;              // {email, id}
 let devices = [];
 
-const localKey = () => 'sentra_devices::' + (session?.email || 'anon');
+const localKey = () => 'cctvtmd_devices::' + (session?.email || 'anon');
 
 /* ---- mapping baris Supabase <-> objek JS ---- */
 const fromRow = r => ({ id:r.id, nama:r.nama, ip:r.ip, portHttp:r.port_http, portRtsp:r.port_rtsp,
@@ -363,6 +392,19 @@ const toRow = d => ({ id:d.id, nama:d.nama, ip:d.ip, port_http:d.portHttp, port_
   firmware:d.firmware||null, daya:d.daya||null, tgl_pasang:d.tglPasang||null,
   garansi_sampai:d.garansi||null, catatan:d.catatan||null });
 
+const BUCKET = 'cctv-foto';
+
+/* Foto: di cloud diunggah sebagai file ke Storage, kolom `foto` hanya berisi URL.
+   Di mode lokal tetap base64 karena tidak ada tempat lain. */
+async function putFoto(d){
+  if(!CLOUD || !d.foto || !d.foto.startsWith('data:')) return d.foto;
+  const blob = await (await fetch(d.foto)).blob();
+  const path = `${d.id}.jpg`;
+  const { error } = await sb.storage.from(BUCKET).upload(path, blob, { upsert:true, contentType:'image/jpeg' });
+  if(error) throw error;
+  return sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl + '?v=' + Date.now();
+}
+
 const api = {
   async list(){
     if(!CLOUD){ try{ return JSON.parse(localStorage.getItem(localKey())||'[]'); }catch{ return []; } }
@@ -372,27 +414,58 @@ const api = {
   },
   async upsert(d){
     if(!CLOUD){ const i = devices.findIndex(x=>x.id===d.id); i>-1?devices[i]=d:devices.push(d); return saveLocal(); }
-    const row = toRow(d); row.user_id = session.id;
-    const { error } = await sb.from('devices').upsert(row);
+    const rec = { ...d, foto: await putFoto(d) };
+    const { error } = await sb.from('devices').upsert(toRow(rec), { onConflict:'ip' });
     if(error) throw error;
   },
   async upsertMany(arr){
     if(!CLOUD){ arr.forEach(d=>{ const i=devices.findIndex(x=>x.ip===d.ip); i>-1?devices[i]={...d,id:devices[i].id}:devices.push(d); }); return saveLocal(); }
-    const rows = arr.map(d=>({ ...toRow(d), user_id: session.id }));
-    const { error } = await sb.from('devices').upsert(rows, { onConflict:'user_id,ip' });
+    const { error } = await sb.from('devices').upsert(arr.map(toRow), { onConflict:'ip' });
     if(error) throw error;
   },
   async remove(id){
     if(!CLOUD){ devices = devices.filter(d=>d.id!==id); return saveLocal(); }
     const { error } = await sb.from('devices').delete().eq('id', id);
     if(error) throw error;
+    try{ await sb.storage.from(BUCKET).remove([`${id}.jpg`]); }catch(e){}
   },
   async wipe(){
     if(!CLOUD){ devices=[]; return saveLocal(); }
-    const { error } = await sb.from('devices').delete().eq('user_id', session.id);
+    const ids = devices.map(d=>d.id);
+    if(!ids.length) return;
+    const { error } = await sb.from('devices').delete().in('id', ids);
+    if(error) throw error;
+    try{ await sb.storage.from(BUCKET).remove(ids.map(i=>`${i}.jpg`)); }catch(e){}
+  },
+  async logs(limit = 300){
+    if(!CLOUD) return null;
+    const { data, error } = await sb.from('device_log')
+      .select('id,ip,aksi,oleh_email,sebelum,sesudah,waktu').order('waktu',{ascending:false}).limit(limit);
+    if(error) throw error;
+    return data||[];
+  },
+  async members(){
+    if(!CLOUD) return [];
+    const { data, error } = await sb.from('members').select('user_id,email,role,created_at').order('created_at');
+    if(error) throw error;
+    return data||[];
+  },
+  async setRole(user_id, role){
+    const { error } = await sb.from('members').update({ role }).eq('user_id', user_id);
     if(error) throw error;
   }
 };
+
+/* Peran: viewer baca saja, editor boleh ubah, admin boleh hapus & atur anggota.
+   Ini hanya menyembunyikan tombol — penegakan sebenarnya ada di RLS Supabase. */
+const ROLES = { admin:'Administrator', it_user:'IT User', viewer:'Viewer', pending:'Menunggu persetujuan' };
+const ROLE_NOTE = {
+  admin:'Boleh menambah, mengubah, menghapus, impor CSV, dan mengatur akun.',
+  it_user:'Boleh menambah dan mengubah device. Hapus, impor CSV, dan manajemen akun hanya untuk Administrator.',
+  viewer:'Hanya melihat data, peta, dan riwayat. Tidak bisa mengubah apa pun.'
+};
+const canEdit = () => !CLOUD || ['it_user','admin'].includes(session?.role);
+const isAdmin = () => !CLOUD || session?.role === 'admin';
 function saveLocal(){
   try{ localStorage.setItem(localKey(), JSON.stringify(devices)); }
   catch{ toast('Penyimpanan browser penuh. Hapus beberapa foto.','err'); }
@@ -411,8 +484,8 @@ async function sha(text){
   return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 const accounts = {
-  all(){ try{ return JSON.parse(localStorage.getItem('sentra_accounts')||'{}'); }catch{ return {}; } },
-  put(o){ localStorage.setItem('sentra_accounts', JSON.stringify(o)); }
+  all(){ try{ return JSON.parse(localStorage.getItem('cctvtmd_accounts')||'{}'); }catch{ return {}; } },
+  put(o){ localStorage.setItem('cctvtmd_accounts', JSON.stringify(o)); }
 };
 
 function setAuthMode(m){
@@ -466,7 +539,7 @@ $('#authForm').addEventListener('submit', async e=>{
         if(!a || a.hash !== await sha(a.salt+pass)){ authMsg('Email atau kata sandi salah.'); return; }
       }
       session = { email, id: email };
-      localStorage.setItem('sentra_session', email);
+      localStorage.setItem('cctvtmd_session', email);
     }
     await enterApp();
   }catch(err){
@@ -475,22 +548,71 @@ $('#authForm').addEventListener('submit', async e=>{
 });
 
 async function enterApp(){
+  if(CLOUD){
+    const { data, error } = await sb.from('members').select('role').eq('user_id', session.id).maybeSingle();
+    if(error){ authMsg('Gagal membaca keanggotaan: '+error.message); return; }
+    session.role = data?.role || 'pending';
+    if(session.role === 'pending'){
+      $('#pendingEmail').textContent = session.email;
+      $('#pending').hidden = false;
+      return;
+    }
+  }else session.role = 'admin';
+
+  $('#pending').hidden = true;
   $('#auth').hidden = true;
   $('#app').hidden = false;
   $('#whoami').textContent = session.email;
+  const peran = `${ROLES[session.role]||session.role} — ${ROLE_NOTE[session.role]||''}`;
   $('#modeLabel').innerHTML = CLOUD
-    ? '<span class="text-on">Supabase — tersimpan di cloud</span>'
+    ? `<span class="text-on">Supabase — database tim</span><br><span class="text-slate-400">${peran}</span>`
     : '<span class="text-maint">Mode lokal — data hanya di browser ini</span>';
+
+  $('#btnAdd').hidden = !canEdit();
+  ['btnImport','btnSeed','btnWipe'].forEach(id=>$('#'+id).hidden = !isAdmin());
+  logRows = null;
+  $('#btnTeam').hidden = !(CLOUD && isAdmin());
   await reload();
   lucide.createIcons();
 }
+
+/* ---- panel anggota (admin) ---- */
+async function openTeam(){
+  $('#team').hidden = false;
+  $('#teamBody').innerHTML = '<p class="text-sm text-slate-500">Memuat…</p>';
+  try{
+    const rows = await api.members();
+    $('#teamBody').innerHTML = `
+      <p class="text-xs text-slate-500 mb-3 leading-relaxed">Pendaftar baru berstatus <span class="text-maint">Menunggu persetujuan</span> dan tidak melihat data apa pun sampai diberi akses. <span class="text-white">Viewer</span> hanya melihat. <span class="text-white">IT User</span> boleh menambah dan mengubah device. <span class="text-white">Administrator</span> juga boleh menghapus, impor CSV, dan mengatur akun ini.</p>
+      <table class="w-full text-sm">
+        <thead class="text-slate-500"><tr><th class="text-left py-1.5">Email</th><th class="text-left">Peran</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr class="border-t border-line">
+          <td class="py-2 ${r.user_id===session.id?'text-cyan2':'text-white'}">${esc(r.email||'—')}${r.user_id===session.id?' (Anda)':''}</td>
+          <td class="py-2">
+            <select data-uid="${r.user_id}" class="rolesel bg-ink-700 border border-line rounded px-2 py-1 text-sm" ${r.user_id===session.id?'disabled':''}>
+              ${Object.entries(ROLES).map(([v,l])=>`<option value="${v}" ${v===r.role?'selected':''}>${l}</option>`).join('')}
+            </select>
+          </td></tr>`).join('')}</tbody>
+      </table>`;
+  }catch(err){ $('#teamBody').innerHTML = `<p class="text-sm text-off">Gagal memuat: ${esc(err.message||err)}</p>`; }
+  lucide.createIcons();
+}
+$('#teamClose').addEventListener('click', ()=>$('#team').hidden = true);
+$('#team').addEventListener('click', e=>{ if(e.target.id==='team') $('#team').hidden = true; });
+$('#team').addEventListener('change', async e=>{
+  const sel = e.target.closest('.rolesel'); if(!sel) return;
+  try{ await api.setRole(sel.dataset.uid, sel.value); toast('Peran diperbarui.'); }
+  catch(err){ toast('Gagal: '+(err.message||err),'err'); }
+});
 async function logout(){
-  if(CLOUD) await sb.auth.signOut(); else localStorage.removeItem('sentra_session');
+  if(CLOUD) await sb.auth.signOut(); else localStorage.removeItem('cctvtmd_session');
   session = null; devices = [];
-  $('#app').hidden = true; $('#auth').hidden = false;
+  $('#app').hidden = true; $('#auth').hidden = false; $('#pending').hidden = true;
   $('#authForm').reset(); setAuthMode('login');
 }
 $('#btnLogout').addEventListener('click', logout);
+$('#pendingOut').addEventListener('click', logout);
+$('#btnTeam').addEventListener('click', openTeam);
 
 /* ============================ DATA CONTOH ============================ */
 function seedData(){
@@ -562,13 +684,13 @@ function renderGrid(){
         <div class="text-xs text-slate-600 mt-0.5 truncate">${[d.tipeKamera,d.resolusi,d.lensa&&d.lensa+'mm'].filter(Boolean).map(esc).join(' · ')||'&nbsp;'}</div>
         <div class="flex gap-1.5 mt-3">
           <button data-act="detail" data-id="${d.id}" class="flex-1 py-1.5 rounded bg-ink-700 border border-line text-xs hover:border-cyan2">Detail</button>
-          <button data-act="edit" data-id="${d.id}" aria-label="Edit" class="px-2.5 py-1.5 rounded bg-ink-700 border border-line hover:border-cyan2"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
-          <button data-act="del" data-id="${d.id}" aria-label="Hapus" class="px-2.5 py-1.5 rounded bg-ink-700 border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+          ${canEdit()?`<button data-act="edit" data-id="${d.id}" aria-label="Edit" class="px-2.5 py-1.5 rounded bg-ink-700 border border-line hover:border-cyan2"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>`:''}
+          ${isAdmin()?`<button data-act="del" data-id="${d.id}" aria-label="Hapus" class="px-2.5 py-1.5 rounded bg-ink-700 border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`:''}
         </div>
       </div>
     </article>`).join('')
     : `<div class="col-span-full border border-dashed border-line rounded p-10 text-center text-slate-500">
-         <p class="mb-3">Belum ada device yang cocok. Tambahkan device, impor CSV, atau muat data contoh dari menu.</p>
+         <p class="mb-3">${canEdit()?'Belum ada device yang cocok. Tambahkan device, impor CSV, atau muat data contoh dari menu.':'Belum ada device yang cocok dengan filter ini.'}</p>
        </div>`;
 }
 function renderList(){
@@ -594,8 +716,8 @@ function renderList(){
       <td class="p-2.5">${statusPill(d.status)}</td>
       <td class="p-2.5 text-right whitespace-nowrap">
         <button data-act="detail" data-id="${d.id}" aria-label="Detail" class="px-2 py-1 rounded border border-line hover:border-cyan2"><i data-lucide="eye" class="w-3.5 h-3.5"></i></button>
-        <button data-act="edit" data-id="${d.id}" aria-label="Edit" class="px-2 py-1 rounded border border-line hover:border-cyan2"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
-        <button data-act="del" data-id="${d.id}" aria-label="Hapus" class="px-2 py-1 rounded border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+        ${canEdit()?`<button data-act="edit" data-id="${d.id}" aria-label="Edit" class="px-2 py-1 rounded border border-line hover:border-cyan2"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>`:''}
+        ${isAdmin()?`<button data-act="del" data-id="${d.id}" aria-label="Hapus" class="px-2 py-1 rounded border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`:''}
       </td></tr>`).join('') : `<tr><td colspan="12" class="p-8 text-center text-slate-500">Tidak ada data yang cocok.</td></tr>`}
     </tbody></table>`;
 }
@@ -671,6 +793,7 @@ function render(){
   $('#filterCount').textContent = `${filtered().length} dari ${devices.length} device`;
   $('#tab-monitor').hidden = state.tab!=='monitor';
   $('#tab-ipdb').hidden    = state.tab!=='ipdb';
+  $('#tab-log').hidden     = state.tab!=='log';
   $('#viewSwitch').style.visibility = state.tab==='monitor'?'visible':'hidden';
   $$('.tab-btn').forEach(b=>b.className=`tab-btn px-3 py-1.5 rounded text-sm font-semibold flex items-center gap-2 ${b.dataset.tab===state.tab?'bg-cyan2 text-ink-900':'text-slate-400 hover:text-white'}`);
   $$('.view-btn').forEach(b=>b.className=`view-btn px-2.5 py-1.5 rounded text-sm flex items-center gap-1.5 ${b.dataset.view===state.view?'bg-cyan2 text-ink-900 font-bold':'text-slate-400 hover:text-white'}`);
@@ -681,9 +804,75 @@ function render(){
     if(state.view==='grid') renderGrid();
     if(state.view==='list') renderList();
     if(state.view==='map')  renderMap();
-  } else renderIpdb();
+  } else if(state.tab==='ipdb') renderIpdb();
+  else renderLog();
   lucide.createIcons();
 }
+
+/* ============================ RIWAYAT ============================ */
+let logRows = null, logLoading = false;
+const LOG_SKIP = new Set(['id','created_at','updated_at','created_by','updated_by']);
+const LOG_BASE = { nama:'Nama', ip:'IP', port_http:'Port HTTP', port_rtsp:'Port RTSP',
+  brand:'Brand', kategori:'Kategori', cluster:'Cluster', zona:'Zona', status:'Status',
+  ip_status:'Status IP', lat:'Latitude', lng:'Longitude', foto:'Foto', catatan:'Catatan' };
+/* SPEC dideklarasikan di bawah; dibaca saat render, bukan saat file dimuat. */
+const logLabel = k => LOG_BASE[k] || (SPEC.find(sp=>sp[2]===k)?.[1]) || k;
+
+function diffRow(a, b){
+  if(!a) return ['baris baru dibuat'];
+  if(!b) return ['baris dihapus'];
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  const out = [];
+  keys.forEach(k=>{
+    if(LOG_SKIP.has(k)) return;
+    const va = a[k] ?? '', vb = b[k] ?? '';
+    if(String(va) === String(vb)) return;
+    const label = logLabel(k);
+    out.push(`${label}: <span class="text-slate-500 line-through">${esc(String(va)||'kosong')}</span> → <span class="text-white">${esc(String(vb)||'kosong')}</span>`);
+  });
+  return out.length ? out : ['tidak ada perubahan nilai'];
+}
+const AKSI = { INSERT:['Tambah','text-on'], UPDATE:['Ubah','text-cyan2'], DELETE:['Hapus','text-off'] };
+
+async function loadLog(force){
+  if(!CLOUD){ logRows = null; return; }
+  if(logRows && !force) return;
+  logLoading = true; renderLog();
+  try{ logRows = await api.logs(); }
+  catch(err){ logRows = []; toast('Gagal memuat riwayat: '+(err.message||err),'err'); }
+  logLoading = false;
+}
+function renderLog(){
+  const box = $('#logTable');
+  if(!CLOUD){
+    box.innerHTML = `<p class="p-8 text-center text-sm text-slate-500">Riwayat perubahan hanya tersedia saat aplikasi terhubung ke Supabase. Mode lokal tidak mencatat siapa mengubah apa.</p>`;
+    $('#logCount').textContent = ''; return;
+  }
+  if(logLoading){ box.innerHTML = `<p class="p-8 text-center text-sm text-slate-500">Memuat riwayat…</p>`; return; }
+  if(!logRows){ loadLog(); return; }
+  const q = ($('#logQ').value||'').trim().toLowerCase();
+  const rows = logRows.filter(r=>!q || [r.ip,r.oleh_email,r.aksi].filter(Boolean).join(' ').toLowerCase().includes(q));
+  $('#logCount').textContent = `${rows.length} dari ${logRows.length} catatan terakhir`;
+  box.innerHTML = `<table class="w-full text-sm min-w-[860px]">
+    <thead class="bg-ink-700 text-slate-400"><tr>
+      <th class="p-2.5 text-left w-44">Waktu</th><th class="p-2.5 text-left w-24">Aksi</th>
+      <th class="p-2.5 text-left w-36">IP</th><th class="p-2.5 text-left w-56">Oleh</th>
+      <th class="p-2.5 text-left">Perubahan</th></tr></thead>
+    <tbody>${rows.length ? rows.map(r=>{
+      const [label,cl] = AKSI[r.aksi] || [r.aksi,'text-slate-400'];
+      const det = diffRow(r.sebelum, r.sesudah);
+      return `<tr class="border-t border-line align-top hover:bg-ink-700/50">
+        <td class="p-2.5 font-mono text-xs text-slate-400">${new Date(r.waktu).toLocaleString('id-ID')}</td>
+        <td class="p-2.5 font-semibold ${cl}">${label}</td>
+        <td class="p-2.5 font-mono text-cyan2">${esc(r.ip||'—')}</td>
+        <td class="p-2.5 text-slate-300 truncate">${esc(r.oleh_email||'sistem')}</td>
+        <td class="p-2.5 text-xs leading-relaxed">${det.slice(0,8).join('<br>')}${det.length>8?`<br><span class="text-slate-600">+${det.length-8} perubahan lain</span>`:''}</td>
+      </tr>`; }).join('')
+      : `<tr><td colspan="5" class="p-8 text-center text-slate-500">Belum ada catatan perubahan.</td></tr>`}
+    </tbody></table>`;
+}
+$('#logRefresh').addEventListener('click', ()=>loadLog(true).then(renderLog));
+let lt; $('#logQ').addEventListener('input', ()=>{ clearTimeout(lt); lt=setTimeout(renderLog,180); });
 
 /* ============================ SPEC & DETAIL ============================ */
 /* [kunci JS, label tampilan, kolom CSV/Postgres] */
@@ -741,7 +930,7 @@ function openDetail(id){
           <a href="http://${esc(d.ip)}:${esc(d.portHttp)}" target="_blank" rel="noopener"
              class="px-3 py-2 rounded border border-line text-sm hover:border-cyan2 flex items-center gap-1.5">
              <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Buka web kamera</a>
-          <button data-act="edit" data-id="${d.id}" class="px-3 py-2 rounded bg-cyan2 text-ink-900 font-bold text-sm">Edit device</button>
+          ${canEdit()?`<button data-act="edit" data-id="${d.id}" class="px-3 py-2 rounded bg-cyan2 text-ink-900 font-bold text-sm">Edit device</button>`:''}
         </div>
       </div>
     </div>`;
@@ -917,13 +1106,13 @@ setInterval(()=>{ const c=$('#clock'); if(c) c.textContent = new Date().toLocale
 (async function boot(){
   setAuthMode('login');
   $('#localNote').innerHTML = CLOUD
-    ? 'Terhubung ke Supabase. Setiap akun hanya melihat datanya sendiri (Row Level Security).'
+    ? 'Terhubung ke Supabase. Database dipakai bersama satu tim; akses diatur oleh Administrator. Pendaftar pertama otomatis jadi Administrator.'
     : 'Mode lokal aktif: akun dan data disimpan di browser ini saja dan <strong class="text-maint">bukan pengamanan sungguhan</strong>. Isi SUPABASE_URL dan SUPABASE_ANON_KEY di bagian atas file untuk multi-user.';
   if(CLOUD){
     const { data } = await sb.auth.getSession();
     if(data.session){ session = { email:data.session.user.email, id:data.session.user.id }; await enterApp(); }
   }else{
-    const e = localStorage.getItem('sentra_session');
+    const e = localStorage.getItem('cctvtmd_session');
     if(e && accounts.all()[e]){ session = {email:e, id:e}; await enterApp(); }
   }
   lucide.createIcons();
