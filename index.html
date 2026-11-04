@@ -118,6 +118,35 @@ article{ transition:transform .16s ease, box-shadow .16s ease, border-color .16s
 .leaflet-control-attribution a{ color:rgb(var(--c-muted)) !important }
 .leaflet-bar a{ background:rgb(var(--c-surface)) !important; color:rgb(var(--c-text)) !important; border-color:rgb(var(--c-line)) !important }
 
+/* ---------- tombol kondisi checklist ---------- */
+.ckbtn{ transition:all .14s ease }
+.sel-on{ background:rgb(var(--c-on)/.15); border-color:rgb(var(--c-on)); color:rgb(var(--c-on)) }
+.sel-off{ background:rgb(var(--c-off)/.15); border-color:rgb(var(--c-off)); color:rgb(var(--c-off)) }
+.sel-maint{ background:rgb(var(--c-maint)/.18); border-color:rgb(var(--c-maint)); color:rgb(var(--c-maint)) }
+
+/* ---------- kartu mode rapat (6–8 kolom) ---------- */
+#viewGrid[data-rapat="1"] article img{ height:84px }
+#viewGrid[data-rapat="1"] article h3{ font-size:.875rem }
+#viewGrid[data-rapat="1"] .p-3{ padding:.6rem }
+
+/* ---------- sel tabel yang bisa diedit ---------- */
+.cell-edit{ width:100%; background:transparent; border:1px solid transparent; border-radius:8px;
+  padding:4px 6px; font-size:.8125rem; color:rgb(var(--c-text)) }
+.cell-edit:hover{ border-color:rgb(var(--c-line)) }
+.cell-edit:focus{ outline:none; border-color:rgb(var(--c-accent)); background:rgb(var(--c-raised)) }
+.cell-edit.tersimpan{ animation:simpan 1s ease }
+@keyframes simpan{ 0%{ background:rgb(var(--c-on)/.25) } 100%{ background:transparent } }
+
+/* ---------- tautan IP ---------- */
+.ip-link{ color:rgb(var(--c-accent)); text-decoration:none; border-bottom:1px dotted rgb(var(--c-accent)/.5) }
+.ip-link:hover{ border-bottom-style:solid; background:rgb(var(--c-accent)/.08); border-radius:4px }
+
+/* ---------- kolom aksi menempel di kanan saat tabel digeser ---------- */
+.col-aksi{ position:sticky; right:0; background:rgb(var(--c-surface));
+  box-shadow:-10px 0 12px -10px rgb(var(--c-shadow)/.45) }
+thead .col-aksi{ background:rgb(var(--c-raised)) }
+tbody tr:hover .col-aksi{ background:rgb(var(--c-raised)) }
+
 /* ---------- cetak laporan checklist ---------- */
 #printArea{ display:none }
 @media print{
@@ -175,7 +204,13 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
 <body class="font-sans min-h-screen">
 
 <!-- ================= AUTH ================= -->
-<div id="auth" class="min-h-screen grid place-items-center p-4 grid-bg">
+<div id="booting" class="min-h-screen grid place-items-center p-4">
+  <div class="flex items-center gap-3 text-slate-500 text-sm">
+    <i data-lucide="loader" class="w-5 h-5 animate-spin"></i> Memeriksa sesi…
+  </div>
+</div>
+
+<div id="auth" hidden class="min-h-screen grid place-items-center p-4 grid-bg">
   <div class="w-full max-w-sm">
     <div class="flex items-center gap-3 mb-6">
       <button id="btnThemeAuth" aria-label="Ganti tema" class="order-last ml-auto px-2.5 py-2 rounded bg-ink-800 border border-line hover:border-cyan2"><i data-lucide="moon" class="w-4 h-4"></i></button>
@@ -533,7 +568,25 @@ function statusPill(s){ return `<span class="s s-${tone(s)}"><i></i>${esc(s)}</s
 
 /* ============================ BACKEND ============================ */
 const CLOUD = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
-const sb = CLOUD ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const sb = CLOUD ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,          // sesi bertahan setelah refresh / tutup tab
+    autoRefreshToken: true,        // token diperpanjang sendiri sebelum kedaluwarsa
+    detectSessionInUrl: false,
+    storageKey: 'cctvtmd_auth',
+    storage: window.localStorage
+  }
+}) : null;
+
+/* Cadangan: sebagian browser membatasi localStorage pada halaman yang dibuka
+   langsung sebagai file (file://). Token disalin manual agar refresh tetap aman. */
+const simpanToken = sesi => {
+  try{
+    if(sesi) localStorage.setItem('cctvtmd_token', JSON.stringify(
+      { access_token: sesi.access_token, refresh_token: sesi.refresh_token }));
+    else localStorage.removeItem('cctvtmd_token');
+  }catch(e){}
+};
 let session = null;              // {email, id}
 let devices = [];
 
@@ -718,10 +771,12 @@ $('#authForm').addEventListener('submit', async e=>{
         const { data, error } = await sb.auth.signUp({ email, password: pass });
         if(error) throw error;
         if(!data.session){ authMsg('Akun dibuat. Cek email untuk konfirmasi, lalu masuk.','ok'); setAuthMode('login'); return; }
+        simpanToken(data.session);
         session = { email, id: data.user.id };
       }else{
         const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
         if(error) throw error;
+        simpanToken(data.session);
         session = { email, id: data.user.id };
       }
     }else{
@@ -751,12 +806,14 @@ async function enterApp(){
     session.role = data?.role || 'pending';
     if(session.role === 'pending'){
       $('#pendingEmail').textContent = session.email;
-      $('#pending').hidden = false;
+      $('#booting').hidden = true; $('#auth').hidden = false; $('#pending').hidden = false;
+      lucide.createIcons();
       return;
     }
   }else session.role = 'admin';
 
   $('#pending').hidden = true;
+  $('#booting').hidden = true;
   $('#auth').hidden = true;
   $('#app').hidden = false;
   $('#whoami').textContent = session.email;
@@ -802,9 +859,10 @@ $('#team').addEventListener('change', async e=>{
   catch(err){ toast('Gagal: '+(err.message||err),'err'); }
 });
 async function logout(){
-  if(CLOUD) await sb.auth.signOut(); else localStorage.removeItem('cctvtmd_session');
+  if(CLOUD){ await sb.auth.signOut(); simpanToken(null); } else localStorage.removeItem('cctvtmd_session');
   session = null; devices = [];
-  $('#app').hidden = true; $('#auth').hidden = false; $('#pending').hidden = true;
+  $('#app').hidden = true; $('#booting').hidden = true; $('#auth').hidden = false; $('#pending').hidden = true;
+  ckRiwayat = null; ck = { items:{}, catatan:{} };
   $('#authForm').reset(); setAuthMode('login');
 }
 $('#btnLogout').addEventListener('click', logout);
@@ -881,7 +939,7 @@ function renderGrid(){
       </div>
       <div class="p-3">
         <h3 class="font-semibold text-white truncate">${esc(d.nama)}</h3>
-        <div class="font-mono text-xs text-cyan2 mt-0.5">${esc(d.ip)}<span class="text-slate-500">:${esc(d.portHttp)}</span>${sameIp(d)>1?`<span class="flag-ip ml-1.5" title="IP ini dipakai ${sameIp(d)} view kamera">IP bersama · ${sameIp(d)}</span>`:''}</div>
+        <div class="font-mono text-xs mt-0.5">${ipLink(d)}${sameIp(d)>1?`<span class="flag-ip ml-1.5" title="IP ini dipakai ${sameIp(d)} view kamera">IP bersama · ${sameIp(d)}</span>`:''}</div>
         <div class="text-xs text-slate-500 mt-1 truncate">${esc(d.brand||'—')} <span class="text-slate-700">|</span> ${esc(d.seri||d.kategori||'CCTV')}</div>
         <div class="text-xs text-slate-600 mt-0.5 truncate">${[d.tipeKamera,d.resolusi,d.lensa&&d.lensa+'mm'].filter(Boolean).map(esc).join(' · ')||'&nbsp;'}</div>
         <div class="flex gap-1.5 mt-3">
@@ -940,11 +998,11 @@ function renderList(){
   $('#viewList').innerHTML = `<table class="w-full text-sm min-w-[920px]">
     <thead class="bg-ink-700 text-slate-400"><tr><th class="p-2.5 text-left w-16">View</th>
       ${cols.map(([k,l])=>`<th class="p-2.5 text-left sortable" data-sort="${k}">${l}${state.sort.key===k?(state.sort.dir>0?' ▲':' ▼'):''}</th>`).join('')}
-      <th class="p-2.5 text-right">Aksi</th></tr></thead>
+      <th class="p-2.5 text-right col-aksi">Aksi</th></tr></thead>
     <tbody>${f.length?f.map(d=>{ const E = canEdit(); return `<tr class="border-t border-line hover:bg-ink-700/50">
       <td class="p-2">${thumb(d,'w-14 h-10 rounded')}</td>
       <td class="p-1.5 font-medium text-white">${E?inp(d,'nama'):esc(d.nama)}</td>
-      <td class="p-1.5 font-mono text-cyan2 whitespace-nowrap">${E?inp(d,'ip','font-mono !w-32 inline-block'):esc(d.ip)}<span class="text-slate-600">:</span>${E?inp(d,'portHttp','font-mono !w-14 inline-block'):esc(d.portHttp)}${sameIp(d)>1?` <span class="flag-ip">${sameIp(d)}×</span>`:''}</td>
+      <td class="p-1.5 font-mono whitespace-nowrap">${E?inp(d,'ip','font-mono !w-32 inline-block')+'<span class="text-slate-600">:</span>'+inp(d,'portHttp','font-mono !w-14 inline-block')+' '+ipIconLink(d):ipLink(d)}${sameIp(d)>1?` <span class="flag-ip">${sameIp(d)}×</span>`:''}</td>
       <td class="p-1.5">${E?inp(d,'cluster'):esc(d.cluster)}</td><td class="p-1.5">${E?inp(d,'zona'):esc(d.zona)}</td>
       <td class="p-1.5 text-slate-400">${E?inp(d,'brand'):esc(d.brand)}</td>
       <td class="p-1.5 font-mono text-xs text-slate-300">${E?inp(d,'seri','font-mono'):esc(d.seri||'—')}</td>
@@ -952,10 +1010,10 @@ function renderList(){
       <td class="p-1.5 text-slate-400">${E?inp(d,'lensa','!w-20 inline-block'):esc(d.lensa||'—')}</td>
       <td class="p-1.5 font-mono text-xs text-slate-400 whitespace-nowrap">${E?inp(d,'lat','font-mono !w-24 inline-block')+inp(d,'lng','font-mono !w-24 inline-block'):esc(d.lat||'—')+', '+esc(d.lng||'—')}</td>
       <td class="p-1.5">${E?sel(d,'status',STATUS):statusPill(d.status)}</td>
-      <td class="p-2.5 text-right whitespace-nowrap">
-        <button data-act="detail" data-id="${d.id}" aria-label="Detail" class="px-2 py-1 rounded border border-line hover:border-cyan2"><i data-lucide="eye" class="w-3.5 h-3.5"></i></button>
-        ${canEdit()?`<button data-act="edit" data-id="${d.id}" aria-label="Edit" class="px-2 py-1 rounded border border-line hover:border-cyan2"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>`:''}
-        ${isAdmin()?`<button data-act="del" data-id="${d.id}" aria-label="Hapus" class="px-2 py-1 rounded border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`:''}
+      <td class="p-1.5 text-right whitespace-nowrap col-aksi">
+        <button data-act="detail" data-id="${d.id}" title="Lihat detail & spesifikasi" class="px-2 py-1.5 rounded-lg border border-line hover:border-cyan2"><i data-lucide="eye" class="w-3.5 h-3.5"></i></button>
+        ${E?`<button data-act="edit" data-id="${d.id}" title="Edit lengkap: semua field + foto" class="px-2.5 py-1.5 rounded-lg border border-line bg-ink-700 hover:border-cyan2 hover:text-cyan2 inline-flex items-center gap-1 text-xs font-semibold"><i data-lucide="pencil" class="w-3.5 h-3.5"></i> Edit</button>`:''}
+        ${isAdmin()?`<button data-act="del" data-id="${d.id}" title="Hapus device" class="px-2 py-1.5 rounded-lg border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`:''}
       </td></tr>`; }).join('') : `<tr><td colspan="12" class="p-8 text-center text-slate-500">Tidak ada data yang cocok.</td></tr>`}
     </tbody></table>`;
   if(canEdit()) $('#viewList').insertAdjacentHTML('afterbegin',
@@ -975,7 +1033,7 @@ function renderMap(){
     L.marker([+d.lat,+d.lng],{icon}).bindPopup(`<div style="min-width:210px">
       ${d.foto?`<img src="${esc(d.foto)}" alt="" style="width:100%;height:110px;object-fit:cover;border-radius:6px;margin-bottom:8px">`:''}
       <div style="font-weight:700;color:#fff">${esc(d.nama)}</div>
-      <div style="font-family:monospace;color:#22d3ee;font-size:12px">${esc(d.ip)}:${esc(d.portHttp)}</div>
+      <div style="font-family:monospace;font-size:12px"><a href="${esc(ipUrl(d))}" target="_blank" rel="noopener noreferrer" style="color:#3b82f6;text-decoration:underline">${esc(d.ip)}:${esc(d.portHttp)}</a></div>
       <div style="font-size:12px;color:#94a3b8;margin-top:4px">${esc(d.cluster)} &middot; ${esc(d.zona)}</div>
       <div style="font-size:11px;color:#64748b">${[d.brand,d.seri,d.resolusi].filter(Boolean).map(esc).join(' · ')}</div>
       <div style="margin-top:6px">${statusPill(d.status)}</div>
@@ -1008,18 +1066,18 @@ function renderIpdb(){
     <thead class="bg-ink-700 text-slate-400"><tr><th class="p-2.5 text-left">IP address</th><th class="p-2.5 text-left">Nama device</th>
       <th class="p-2.5 text-left">Cluster</th><th class="p-2.5 text-left">Zona</th><th class="p-2.5 text-left">Kategori</th>
       <th class="p-2.5 text-left">Berbagi IP</th><th class="p-2.5 text-left">Status IP</th>
-      <th class="p-2.5 text-left">Perangkat</th><th class="p-2.5 text-right">Aksi</th></tr></thead>
+      <th class="p-2.5 text-left">Perangkat</th><th class="p-2.5 text-right col-aksi">Aksi</th></tr></thead>
     <tbody>${sorted.length?sorted.map(d=>{ const E = canEdit(); return `<tr class="border-t border-line hover:bg-ink-700/50">
-      <td class="p-1.5 font-mono text-cyan2 whitespace-nowrap">${E?inp(d,'ip','font-mono !w-32 inline-block'):esc(d.ip)}</td>
+      <td class="p-1.5 font-mono whitespace-nowrap">${E?inp(d,'ip','font-mono !w-32 inline-block')+' '+ipIconLink(d):ipLink(d)}</td>
       <td class="p-1.5 text-white">${E?inp(d,'nama'):esc(d.nama)}</td>
       <td class="p-1.5">${E?inp(d,'cluster'):esc(d.cluster)}</td><td class="p-1.5">${E?inp(d,'zona'):esc(d.zona)}</td>
       <td class="p-1.5 text-slate-400">${E?sel(d,'kategori',['CCTV','NVR','Switch','Access Point','Access Control','Server','Lainnya']):esc(d.kategori||'CCTV')}</td>
       <td class="p-2.5">${sameIp(d)>1?`<span class="flag-ip" title="${devices.filter(x=>x.ip===d.ip).map(x=>esc(x.nama)).join(', ')}">${sameIp(d)} view</span>`:'<span class="text-slate-600 text-xs">—</span>'}</td>
       <td class="p-1.5">${E?sel(d,'ipStatus',['Used','Reserved']):`<span class="text-xs px-2 py-0.5 rounded-full border ${d.ipStatus==='Reserved'?'border-maint text-maint':'border-on/50 text-on'}">${esc(d.ipStatus||'Used')}</span>`}</td>
       <td class="p-1.5">${E?sel(d,'status',STATUS):statusPill(d.status)}</td>
-      <td class="p-1.5 text-right whitespace-nowrap">
-        <button data-act="detail" data-id="${d.id}" aria-label="Detail" class="px-2 py-1 rounded border border-line hover:border-cyan2"><i data-lucide="eye" class="w-3.5 h-3.5"></i></button>
-        ${E?`<button data-act="edit" data-id="${d.id}" aria-label="Edit lengkap" class="px-2 py-1 rounded border border-line hover:border-cyan2"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>`:''}
+      <td class="p-1.5 text-right whitespace-nowrap col-aksi">
+        <button data-act="detail" data-id="${d.id}" title="Lihat detail" class="px-2 py-1.5 rounded-lg border border-line hover:border-cyan2"><i data-lucide="eye" class="w-3.5 h-3.5"></i></button>
+        ${E?`<button data-act="edit" data-id="${d.id}" title="Edit lengkap" class="px-2.5 py-1.5 rounded-lg border border-line bg-ink-700 hover:border-cyan2 hover:text-cyan2 inline-flex items-center gap-1 text-xs font-semibold"><i data-lucide="pencil" class="w-3.5 h-3.5"></i> Edit</button>`:''}
         ${isAdmin()?`<button data-act="del" data-id="${d.id}" aria-label="Hapus" class="px-2 py-1 rounded border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`:''}
       </td></tr>`; }).join('') : `<tr><td colspan="9" class="p-8 text-center text-slate-500">Belum ada IP terdaftar.</td></tr>`}
     </tbody></table>`;
@@ -1044,6 +1102,7 @@ function render(){
   $('#tab-monitor').hidden = state.tab!=='monitor';
   $('#tab-ipdb').hidden    = state.tab!=='ipdb';
   $('#tab-log').hidden     = state.tab!=='log';
+  $('#tab-check').hidden   = state.tab!=='check';
   $('#viewSwitch').style.visibility = state.tab==='monitor'?'visible':'hidden';
   $$('.tab-btn').forEach(b=>b.className=`tab-btn px-3 py-1.5 rounded text-sm font-semibold flex items-center gap-2 ${b.dataset.tab===state.tab?'bg-cyan2 text-ink-900':'text-slate-400 hover:text-white'}`);
   $('#fShared').className = `px-2.5 py-1.5 text-sm rounded border flex items-center gap-1.5 ${state.shared?'bg-maint/15 border-maint text-maint font-semibold':'border-line text-slate-400 hover:text-cyan2 hover:border-cyan2'}`;
@@ -1057,6 +1116,7 @@ function render(){
     if(state.view==='list') renderList();
     if(state.view==='map')  renderMap();
   } else if(state.tab==='ipdb') renderIpdb();
+  else if(state.tab==='check') renderCheck();
   else renderLog();
   lucide.createIcons();
 }
@@ -1114,12 +1174,12 @@ function renderCheck(){
       <th class="p-2.5 text-left">Catatan</th></tr></thead>
     <tbody>${f.length ? f.map(d=>`<tr class="border-t border-line">
       <td class="p-2 font-medium text-white">${esc(d.nama)}</td>
-      <td class="p-2 font-mono text-cyan2 whitespace-nowrap">${esc(d.ip)}${sameIp(d)>1?` <span class="flag-ip">${sameIp(d)}×</span>`:''}</td>
+      <td class="p-2 font-mono whitespace-nowrap">${ipLink(d)}${sameIp(d)>1?` <span class="flag-ip">${sameIp(d)}×</span>`:''}</td>
       <td class="p-2 text-slate-400">${esc(d.cluster)} · ${esc(d.zona)}</td>
       <td class="p-2">
         <div class="flex gap-1 justify-center">
           ${KONDISI.map(([k,l,c])=>`<button data-ck="${d.id}" data-kondisi="${k}"
-            class="ckbtn px-2.5 py-1.5 rounded-lg border text-xs font-semibold ${ck.items[d.id]===k?`bg-${c}/15 border-${c} text-${c}`:'border-line text-slate-400 hover:border-cyan2'}">${l}</button>`).join('')}
+            class="ckbtn px-2.5 py-1.5 rounded-lg border text-xs font-semibold ${ck.items[d.id]===k?'sel-'+c:'border-line text-slate-400 hover:border-cyan2'}">${l}</button>`).join('')}
         </div>
       </td>
       <td class="p-2"><input data-cknote="${d.id}" value="${esc(ck.catatan[d.id]||'')}" placeholder="opsional"
@@ -1336,6 +1396,13 @@ const SPEC = [
 const MONO = new Set(['seri','serial','mac','firmware','ir']);
 /* Berapa banyak view yang berbagi IP ini — satu kamera multi-sensor bisa punya beberapa. */
 const sameIp = d => devices.filter(x=>x.ip===d.ip).length;
+/* IP sebagai tautan ke antarmuka web perangkat, selalu dibuka di tab baru */
+const ipUrl  = d => `http://${d.ip}:${d.portHttp||80}`;
+const ipLink = d => `<a href="${esc(ipUrl(d))}" target="_blank" rel="noopener noreferrer" class="ip-link"
+  title="Buka ${esc(ipUrl(d))} di tab baru">${esc(d.ip)}<span class="text-slate-600">:${esc(d.portHttp||80)}</span><i data-lucide="external-link" class="w-3 h-3 inline-block align-[-1px] ml-1 opacity-60"></i></a>`;
+const ipIconLink = d => `<a href="${esc(ipUrl(d))}" target="_blank" rel="noopener noreferrer"
+  class="inline-flex items-center px-1.5 py-1 rounded-lg border border-line hover:border-cyan2 hover:text-cyan2 align-middle"
+  title="Buka ${esc(ipUrl(d))} di tab baru"><i data-lucide="external-link" class="w-3.5 h-3.5"></i></a>`;
 
 function garansiNote(d){
   if(!d.garansi) return '';
@@ -1354,7 +1421,7 @@ function openDetail(id){
         ${d.foto ? `<img src="${esc(d.foto)}" alt="View ${esc(d.nama)}" class="w-full rounded border border-line">`
                  : `<div class="w-full h-40 rounded border border-dashed border-line grid place-items-center text-slate-600 text-xs">belum ada foto view</div>`}
         <div class="mt-3 space-y-1 text-sm">
-          <div class="font-mono text-cyan2">${esc(d.ip)}<span class="text-slate-500">:${esc(d.portHttp)}</span></div>
+          <div class="font-mono">${ipLink(d)}</div>
           ${sameIp(d)>1?`<div class="text-xs text-maint">IP ini dipakai bersama ${sameIp(d)} view: ${devices.filter(x=>x.ip===d.ip).map(x=>esc(x.nama)).join(', ')}</div>`:''}
           <div class="font-mono text-xs text-slate-500">rtsp://${esc(d.ip)}:${esc(d.portRtsp||554)}</div>
           <div class="text-slate-400">${esc(d.cluster)} &middot; ${esc(d.zona)}</div>
@@ -1642,11 +1709,36 @@ setInterval(()=>{ const c=$('#clock'); if(c) c.textContent = new Date().toLocale
         : 'Akun dibuat oleh Administrator. Kalau belum punya akses, hubungi Administrator tim CCTV TMD.')
     : 'Mode lokal aktif: akun dan data disimpan di browser ini saja dan <strong class="text-maint">bukan pengamanan sungguhan</strong>. Isi SUPABASE_URL dan SUPABASE_ANON_KEY di bagian atas file untuk multi-user.';
   if(CLOUD){
-    const { data } = await sb.auth.getSession();
-    if(data.session){ session = { email:data.session.user.email, id:data.session.user.id }; await enterApp(); }
+    let { data } = await sb.auth.getSession();
+
+    /* Kalau klien tidak menemukan sesi, coba pulihkan dari token cadangan. */
+    if(!data.session){
+      try{
+        const t = JSON.parse(localStorage.getItem('cctvtmd_token') || 'null');
+        if(t?.refresh_token){
+          const r = await sb.auth.setSession(t);
+          if(!r.error && r.data.session) data = r.data;
+        }
+      }catch(e){}
+    }
+
+    if(data.session){
+      simpanToken(data.session);
+      session = { email:data.session.user.email, id:data.session.user.id };
+      await enterApp();
+    }else{
+      $('#booting').hidden = true; $('#auth').hidden = false;
+    }
+
+    /* Token diperpanjang diam-diam oleh library; simpan versi terbarunya. */
+    sb.auth.onAuthStateChange((event, sesi)=>{
+      if(sesi) simpanToken(sesi);
+      if(event === 'SIGNED_OUT') simpanToken(null);
+    });
   }else{
     const e = localStorage.getItem('cctvtmd_session');
     if(e && accounts.all()[e]){ session = {email:e, id:e}; await enterApp(); }
+    else { $('#booting').hidden = true; $('#auth').hidden = false; }
   }
   lucide.createIcons();
 })();
