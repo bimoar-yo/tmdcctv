@@ -118,6 +118,29 @@ article{ transition:transform .16s ease, box-shadow .16s ease, border-color .16s
 .leaflet-control-attribution a{ color:rgb(var(--c-muted)) !important }
 .leaflet-bar a{ background:rgb(var(--c-surface)) !important; color:rgb(var(--c-text)) !important; border-color:rgb(var(--c-line)) !important }
 
+/* ---------- cetak laporan checklist ---------- */
+#printArea{ display:none }
+@media print{
+  body > *{ display:none !important }
+  #printArea{ display:block !important; color:#000; background:#fff; font-size:11px }
+  #printArea h1{ font-size:17px; margin:0 0 2px }
+  #printArea table{ width:100%; border-collapse:collapse; margin-top:10px }
+  #printArea th,#printArea td{ border:1px solid #999; padding:4px 6px; text-align:left }
+  #printArea thead{ background:#eee }
+  #printArea tr{ page-break-inside:avoid }
+  #printArea .ringkas td{ text-align:center; font-weight:700 }
+  @page{ size:A4; margin:14mm }
+}
+
+/* ---------- area unggah foto ---------- */
+.dropzone{ background:rgb(var(--c-raised)/.45); transition:border-color .16s ease, background-color .16s ease }
+.dropzone:hover,.dropzone:focus-visible{ border-color:rgb(var(--c-accent)); background:rgb(var(--c-accent)/.06) }
+.dropzone.is-over{ border-color:rgb(var(--c-accent)); background:rgb(var(--c-accent)/.12); border-style:solid }
+.dropzone.is-over #fotoPrev{ opacity:.55 }
+.dropzone .btn-upload{ box-shadow:0 6px 16px -10px rgb(var(--c-accent)/.9) }
+.dropzone:hover .btn-upload{ filter:brightness(1.06) }
+.sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0 }
+
 /* ---------- kontrol ---------- */
 .inp{ width:100%; margin-top:.4rem; background:rgb(var(--c-raised)); border:1px solid rgb(var(--c-line));
   border-radius:12px; padding:.55rem .8rem; font-size:.875rem; color:rgb(var(--c-text)) }
@@ -214,6 +237,7 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
     <nav class="flex gap-1 bg-ink-700 p-1 rounded border border-line">
       <button data-tab="monitor" class="tab-btn px-3 py-1.5 rounded text-sm font-semibold flex items-center gap-2"><i data-lucide="cctv" class="w-4 h-4"></i> Monitoring CCTV</button>
       <button data-tab="ipdb" class="tab-btn px-3 py-1.5 rounded text-sm font-semibold flex items-center gap-2"><i data-lucide="network" class="w-4 h-4"></i> Database IP</button>
+      <button data-tab="check" class="tab-btn px-3 py-1.5 rounded text-sm font-semibold flex items-center gap-2"><i data-lucide="clipboard-check" class="w-4 h-4"></i> Checklist</button>
       <button data-tab="log" class="tab-btn px-3 py-1.5 rounded text-sm font-semibold flex items-center gap-2"><i data-lucide="history" class="w-4 h-4"></i> Riwayat</button>
     </nav>
 
@@ -258,7 +282,16 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
   <button id="fShared" class="px-2.5 py-1.5 text-sm rounded border border-line flex items-center gap-1.5"><i data-lucide="link-2" class="w-3.5 h-3.5"></i> IP bersama</button>
   <button id="fReset" class="px-2.5 py-1.5 text-sm rounded border border-line text-slate-400 hover:text-cyan2 hover:border-cyan2 flex items-center gap-1.5"><i data-lucide="filter-x" class="w-3.5 h-3.5"></i> Bersihkan filter</button>
   <span id="filterCount" class="text-sm text-slate-500 font-mono"></span>
-  <div class="ml-auto flex gap-1 bg-ink-700 p-1 rounded border border-line" id="viewSwitch">
+  <div id="densityWrap" class="ml-auto flex items-center gap-1 bg-ink-700 p-1 rounded border border-line mr-1">
+    <span class="text-xs text-slate-500 px-1.5">Kolom</span>
+    <button data-cols="auto" class="col-btn px-2 py-1 rounded text-xs">Auto</button>
+    <button data-cols="2" class="col-btn px-2 py-1 rounded text-xs">2</button>
+    <button data-cols="3" class="col-btn px-2 py-1 rounded text-xs">3</button>
+    <button data-cols="4" class="col-btn px-2 py-1 rounded text-xs">4</button>
+    <button data-cols="6" class="col-btn px-2 py-1 rounded text-xs">6</button>
+    <button data-cols="8" class="col-btn px-2 py-1 rounded text-xs">8</button>
+  </div>
+  <div class="flex gap-1 bg-ink-700 p-1 rounded border border-line" id="viewSwitch">
     <button data-view="grid" class="view-btn px-2.5 py-1.5 rounded text-sm flex items-center gap-1.5"><i data-lucide="layout-grid" class="w-4 h-4"></i><span class="hidden sm:inline">Grid</span></button>
     <button data-view="list" class="view-btn px-2.5 py-1.5 rounded text-sm flex items-center gap-1.5"><i data-lucide="table-2" class="w-4 h-4"></i><span class="hidden sm:inline">Tabel</span></button>
     <button data-view="map"  class="view-btn px-2.5 py-1.5 rounded text-sm flex items-center gap-1.5"><i data-lucide="map-pin" class="w-4 h-4"></i><span class="hidden sm:inline">Peta</span></button>
@@ -271,6 +304,46 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
     <div id="viewList" hidden class="overflow-x-auto border border-line rounded bg-ink-800"></div>
     <div id="viewMap"  hidden class="border border-line rounded overflow-hidden">
       <div id="map" class="w-full" style="height:min(72vh,720px)"></div>
+    </div>
+  </section>
+
+  <section id="tab-check" hidden class="space-y-4">
+    <div class="bg-ink-800 border border-line rounded p-4">
+      <div class="flex flex-wrap items-end gap-3">
+        <label class="text-sm">Tanggal pemeriksaan
+          <input id="ckTanggal" type="date" class="inp w-44">
+        </label>
+        <label class="text-sm flex-1 min-w-[200px]">PIC yang memeriksa
+          <input id="ckPic" placeholder="Nama petugas" class="inp">
+        </label>
+        <label class="text-sm flex-1 min-w-[220px]">Catatan umum
+          <input id="ckCatatan" placeholder="mis. pemadaman di area CBD" class="inp">
+        </label>
+        <button id="ckLoad" class="px-3 py-2 rounded border border-line text-sm hover:border-cyan2 flex items-center gap-1.5"><i data-lucide="folder-open" class="w-4 h-4"></i> Muat checklist tanggal ini</button>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-line">
+        <button data-fill="hidup" class="ckFill px-2.5 py-1.5 rounded border border-line text-sm hover:border-on hover:text-on">Tandai semua Hidup</button>
+        <button data-fill="mati" class="ckFill px-2.5 py-1.5 rounded border border-line text-sm hover:border-off hover:text-off">Semua Mati</button>
+        <button data-fill="" class="ckFill px-2.5 py-1.5 rounded border border-line text-sm hover:border-cyan2">Kosongkan</button>
+        <label class="flex items-center gap-2 text-sm ml-2 cursor-pointer">
+          <input id="ckSync" type="checkbox" class="w-4 h-4 accent-current" checked>
+          <span>Perbarui status device sesuai hasil checklist</span>
+        </label>
+        <div class="ml-auto flex gap-2">
+          <button id="ckPrint" class="px-3 py-2 rounded border border-line text-sm hover:border-cyan2 flex items-center gap-1.5"><i data-lucide="file-down" class="w-4 h-4"></i> Unduh PDF</button>
+          <button id="ckSave" class="px-3 py-2 rounded bg-cyan2 text-ink-900 text-sm font-bold flex items-center gap-1.5"><i data-lucide="save" class="w-4 h-4"></i> Simpan checklist</button>
+        </div>
+      </div>
+
+      <div id="ckStats" class="grid grid-cols-2 md:grid-cols-5 gap-2 mt-4"></div>
+    </div>
+
+    <div id="ckTable" class="overflow-x-auto border border-line rounded bg-ink-800"></div>
+
+    <div class="bg-ink-800 border border-line rounded p-4">
+      <h3 class="font-bold mb-2 flex items-center gap-2"><i data-lucide="history" class="w-4 h-4 text-cyan2"></i> Checklist tersimpan</h3>
+      <div id="ckRiwayat" class="text-sm text-slate-500">Memuat…</div>
     </div>
   </section>
 
@@ -383,14 +456,26 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
 
       <div class="md:col-span-2 text-sm">
         <span>Foto sudut pandang kamera</span>
-        <div class="mt-1.5 flex items-center gap-3">
-          <div id="fotoPrev" class="w-36 h-24 rounded border border-line bg-ink-700 grid place-items-center overflow-hidden text-slate-600 text-xs">belum ada foto</div>
-          <div class="flex flex-col gap-2">
-            <input id="f_foto" type="file" accept="image/*" class="text-xs file:mr-2 file:px-3 file:py-1.5 file:rounded file:border-0 file:bg-ink-600 file:text-slate-200">
-            <button type="button" id="fotoClear" class="text-xs text-off text-left hover:underline">Hapus foto</button>
+        <input id="f_foto" type="file" accept="image/*" class="sr-only">
+        <div id="dropFoto" tabindex="0" role="button" aria-label="Pilih atau jatuhkan foto"
+             class="dropzone mt-2 flex items-center gap-4 p-3 rounded border border-dashed border-line cursor-pointer">
+          <div id="fotoPrev" class="shrink-0 w-40 h-28 rounded-xl bg-ink-700 border border-line grid place-items-center overflow-hidden text-slate-600 text-xs text-center px-2">
+            <span class="flex flex-col items-center gap-1"><i data-lucide="image" class="w-5 h-5"></i>belum ada foto</span>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="btn-upload inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan2 text-ink-900 text-sm font-bold">
+                <i data-lucide="upload-cloud" class="w-4 h-4"></i> Pilih foto
+              </span>
+              <button type="button" id="fotoClear" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-line text-sm hover:border-off hover:text-off" hidden>
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Hapus
+              </button>
+            </div>
+            <p id="fotoInfo" class="text-xs text-slate-500 mt-2 leading-relaxed">
+              Klik, atau jatuhkan gambar ke area ini. JPG / PNG / WebP, otomatis dikecilkan ke lebar 720px.
+            </p>
           </div>
         </div>
-        <p class="text-xs text-slate-500 mt-1.5">Gambar dikecilkan otomatis ke lebar 720px sebelum disimpan.</p>
       </div>
       <div class="md:col-span-2 flex justify-end gap-2 pt-2 border-t border-line">
         <button type="button" id="formCancel" class="px-4 py-2 rounded border border-line text-sm">Batal</button>
@@ -421,6 +506,8 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
     <div id="teamBody" class="p-5"></div>
   </div>
 </div>
+
+<div id="printArea" hidden></div>
 
 <div id="toast" class="fixed bottom-4 right-4 z-[2000] space-y-2"></div>
 
@@ -490,7 +577,37 @@ const api = {
   async upsert(d){
     if(!CLOUD){ const i = devices.findIndex(x=>x.id===d.id); i>-1?devices[i]=d:devices.push(d); return saveLocal(); }
     const rec = { ...d, foto: await putFoto(d) };
-    const { error } = await sb.from('devices').upsert(toRow(rec), { onConflict:'ip,nama' });
+    const row = toRow(rec);
+    const lama = devices.some(x=>x.id===d.id);
+    /* Baris yang sudah ada diubah lewat id-nya, supaya ganti nama / ganti IP
+       tidak membuat baris baru. Baris baru di-insert biasa. */
+    const { error } = lama
+      ? await sb.from('devices').update(row).eq('id', d.id)
+      : await sb.from('devices').insert(row);
+    if(error) throw error;
+  },
+  async patch(id, kolom){
+    if(!CLOUD){ const i = devices.findIndex(x=>x.id===id); if(i>-1) Object.assign(devices[i], kolom); return saveLocal(); }
+    const { error } = await sb.from('devices').update(kolom).eq('id', id);
+    if(error) throw error;
+  },
+  async listChecklists(limit = 60){
+    if(!CLOUD){ try{ return JSON.parse(localStorage.getItem('cctvtmd_checklists::'+(session?.email||'anon'))||'[]'); }catch{ return []; } }
+    const { data, error } = await sb.from('checklists').select('*').order('tanggal',{ascending:false}).limit(limit);
+    if(error) throw error;
+    return data||[];
+  },
+  async saveChecklist(ck){
+    if(!CLOUD){
+      const key='cctvtmd_checklists::'+(session?.email||'anon');
+      let arr=[]; try{ arr=JSON.parse(localStorage.getItem(key)||'[]'); }catch{}
+      const i=arr.findIndex(x=>x.tanggal===ck.tanggal && x.pic===ck.pic);
+      i>-1 ? arr[i]=ck : arr.unshift(ck);
+      localStorage.setItem(key, JSON.stringify(arr.slice(0,60))); return;
+    }
+    const { error } = await sb.from('checklists')
+      .upsert({ tanggal:ck.tanggal, pic:ck.pic, catatan:ck.catatan, ringkasan:ck.ringkasan, items:ck.items },
+              { onConflict:'tanggal,pic' });
     if(error) throw error;
   },
   async upsertMany(arr){
@@ -709,7 +826,10 @@ function seedData(){
 }
 
 /* ============================ STATE & FILTER ============================ */
-let state = { tab:'monitor', view:'grid', q:'', cluster:'', zona:'', brand:'', status:'', shared:false, sort:{key:'nama',dir:1} };
+let state = { tab:'monitor', view:'grid', q:'', cluster:'', zona:'', brand:'', status:'', shared:false,
+               cols: localStorage.getItem('cctvtmd_cols') || 'auto', sort:{key:'nama',dir:1} };
+let ck = { items:{}, catatan:{} };   // hasil checklist yang sedang diisi: {deviceId: 'hidup'|'mati'|'maintenance'}
+let ckRiwayat = null;
 let map, markerLayer, pendingFoto = null;
 
 function filtered(){
@@ -775,6 +895,42 @@ function renderGrid(){
          <p class="mb-3">${canEdit()?'Belum ada device yang cocok. Tambahkan device, impor CSV, atau muat data contoh dari menu.':'Belum ada device yang cocok dengan filter ini.'}</p>
        </div>`;
 }
+/* ---- sel tabel yang bisa diedit langsung ---- */
+const KOLOM = { nama:'nama', ip:'ip', portHttp:'port_http', cluster:'cluster', zona:'zona',
+                brand:'brand', seri:'seri', resolusi:'resolusi', lensa:'lensa_mm',
+                lat:'lat', lng:'lng', status:'status', kategori:'kategori', ipStatus:'ip_status' };
+const inp = (d,k,cls='') => `<input class="cell-edit ${cls}" data-edit="${d.id}" data-field="${k}" value="${esc(d[k] ?? '')}">`;
+const sel = (d,k,opsi) => `<select class="cell-edit" data-edit="${d.id}" data-field="${k}">${opsi.map(o=>`<option ${o===d[k]?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+
+async function simpanSel(el){
+  const d = devices.find(x=>x.id===el.dataset.edit); if(!d) return;
+  const k = el.dataset.field;
+  let v = el.value.trim();
+  if(k==='portHttp') v = +v || 80;
+  if(String(d[k] ?? '') === String(v)) return;
+  if(k==='ip' && !isIp(v)){ toast('Alamat IP tidak valid.','err'); el.value = d.ip; return; }
+  if(k==='nama' && !v){ toast('Nama tidak boleh kosong.','err'); el.value = d.nama; return; }
+  if(k==='ip' || k==='nama'){
+    const ipBaru = k==='ip'?v:d.ip, namaBaru = k==='nama'?v:d.nama;
+    if(devices.some(x=>x.id!==d.id && x.ip===ipBaru && x.nama===namaBaru)){
+      toast('Sudah ada device dengan IP dan nama yang sama.','err'); el.value = d[k] ?? ''; return; }
+  }
+  const lama = d[k];
+  d[k] = v;
+  try{
+    const kolom = {};
+    kolom[KOLOM[k] || k] = (k==='lat'||k==='lng') ? (v===''?null:+v) : v;
+    await api.patch(d.id, kolom);
+    el.classList.add('tersimpan'); setTimeout(()=>el.classList.remove('tersimpan'), 1000);
+    renderStats();
+  }catch(err){ d[k] = lama; el.value = lama ?? ''; toast('Gagal menyimpan: '+(err.message||err),'err'); }
+}
+document.addEventListener('change', e=>{ const el = e.target.closest('[data-edit]'); if(el) simpanSel(el); });
+document.addEventListener('keydown', e=>{
+  const el = e.target.closest('[data-edit]');
+  if(el && e.key==='Enter'){ e.preventDefault(); el.blur(); }
+});
+
 function renderList(){
   const cols = [['nama','Nama'],['ip','IP'],['cluster','Cluster'],['zona','Zona'],['brand','Brand'],
                 ['seri','Seri / model'],['resolusi','Resolusi'],['lensa','Lensa'],['lat','Koordinat'],['status','Status']];
@@ -785,23 +941,25 @@ function renderList(){
     <thead class="bg-ink-700 text-slate-400"><tr><th class="p-2.5 text-left w-16">View</th>
       ${cols.map(([k,l])=>`<th class="p-2.5 text-left sortable" data-sort="${k}">${l}${state.sort.key===k?(state.sort.dir>0?' ▲':' ▼'):''}</th>`).join('')}
       <th class="p-2.5 text-right">Aksi</th></tr></thead>
-    <tbody>${f.length?f.map(d=>`<tr class="border-t border-line hover:bg-ink-700/50">
+    <tbody>${f.length?f.map(d=>{ const E = canEdit(); return `<tr class="border-t border-line hover:bg-ink-700/50">
       <td class="p-2">${thumb(d,'w-14 h-10 rounded')}</td>
-      <td class="p-2.5 font-medium text-white">${esc(d.nama)}</td>
-      <td class="p-2.5 font-mono text-cyan2 whitespace-nowrap">${esc(d.ip)}<span class="text-slate-600">:${esc(d.portHttp)}</span>${sameIp(d)>1?` <span class="flag-ip">${sameIp(d)}×</span>`:''}</td>
-      <td class="p-2.5">${esc(d.cluster)}</td><td class="p-2.5">${esc(d.zona)}</td>
-      <td class="p-2.5 text-slate-400">${esc(d.brand)}</td>
-      <td class="p-2.5 font-mono text-xs text-slate-300">${esc(d.seri||'—')}</td>
-      <td class="p-2.5 text-slate-400">${esc(d.resolusi||'—')}</td>
-      <td class="p-2.5 text-slate-400">${esc(d.lensa?d.lensa+' mm':'—')}</td>
-      <td class="p-2.5 font-mono text-xs text-slate-400">${esc(d.lat||'—')}, ${esc(d.lng||'—')}</td>
-      <td class="p-2.5">${statusPill(d.status)}</td>
+      <td class="p-1.5 font-medium text-white">${E?inp(d,'nama'):esc(d.nama)}</td>
+      <td class="p-1.5 font-mono text-cyan2 whitespace-nowrap">${E?inp(d,'ip','font-mono !w-32 inline-block'):esc(d.ip)}<span class="text-slate-600">:</span>${E?inp(d,'portHttp','font-mono !w-14 inline-block'):esc(d.portHttp)}${sameIp(d)>1?` <span class="flag-ip">${sameIp(d)}×</span>`:''}</td>
+      <td class="p-1.5">${E?inp(d,'cluster'):esc(d.cluster)}</td><td class="p-1.5">${E?inp(d,'zona'):esc(d.zona)}</td>
+      <td class="p-1.5 text-slate-400">${E?inp(d,'brand'):esc(d.brand)}</td>
+      <td class="p-1.5 font-mono text-xs text-slate-300">${E?inp(d,'seri','font-mono'):esc(d.seri||'—')}</td>
+      <td class="p-1.5 text-slate-400">${E?inp(d,'resolusi'):esc(d.resolusi||'—')}</td>
+      <td class="p-1.5 text-slate-400">${E?inp(d,'lensa','!w-20 inline-block'):esc(d.lensa||'—')}</td>
+      <td class="p-1.5 font-mono text-xs text-slate-400 whitespace-nowrap">${E?inp(d,'lat','font-mono !w-24 inline-block')+inp(d,'lng','font-mono !w-24 inline-block'):esc(d.lat||'—')+', '+esc(d.lng||'—')}</td>
+      <td class="p-1.5">${E?sel(d,'status',STATUS):statusPill(d.status)}</td>
       <td class="p-2.5 text-right whitespace-nowrap">
         <button data-act="detail" data-id="${d.id}" aria-label="Detail" class="px-2 py-1 rounded border border-line hover:border-cyan2"><i data-lucide="eye" class="w-3.5 h-3.5"></i></button>
         ${canEdit()?`<button data-act="edit" data-id="${d.id}" aria-label="Edit" class="px-2 py-1 rounded border border-line hover:border-cyan2"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>`:''}
         ${isAdmin()?`<button data-act="del" data-id="${d.id}" aria-label="Hapus" class="px-2 py-1 rounded border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`:''}
-      </td></tr>`).join('') : `<tr><td colspan="12" class="p-8 text-center text-slate-500">Tidak ada data yang cocok.</td></tr>`}
+      </td></tr>`; }).join('') : `<tr><td colspan="12" class="p-8 text-center text-slate-500">Tidak ada data yang cocok.</td></tr>`}
     </tbody></table>`;
+  if(canEdit()) $('#viewList').insertAdjacentHTML('afterbegin',
+    `<p class="px-3 py-2 text-xs text-slate-500 border-b border-line">Klik sel mana pun untuk mengubah langsung — perubahan tersimpan saat Anda pindah sel atau menekan Enter.</p>`);
 }
 function initMap(){
   if(map) return;
@@ -846,18 +1004,27 @@ function renderIpdb(){
 
   const sorted = [...f].sort((a,b)=>{ const sa=segOf(a.ip), sb=segOf(b.ip);
     return sa===sb ? hostOf(a.ip)-hostOf(b.ip) : sa.localeCompare(sb); });
-  $('#ipTable').innerHTML = `<table class="w-full text-sm min-w-[780px]">
+  $('#ipTable').innerHTML = `<table class="w-full text-sm min-w-[1040px]">
     <thead class="bg-ink-700 text-slate-400"><tr><th class="p-2.5 text-left">IP address</th><th class="p-2.5 text-left">Nama device</th>
       <th class="p-2.5 text-left">Cluster</th><th class="p-2.5 text-left">Zona</th><th class="p-2.5 text-left">Kategori</th>
-      <th class="p-2.5 text-left">Berbagi IP</th><th class="p-2.5 text-left">Status IP</th><th class="p-2.5 text-left">Perangkat</th></tr></thead>
-    <tbody>${sorted.length?sorted.map(d=>`<tr class="border-t border-line hover:bg-ink-700/50">
-      <td class="p-2.5 font-mono text-cyan2 whitespace-nowrap">${esc(d.ip)}</td><td class="p-2.5 text-white">${esc(d.nama)}</td>
-      <td class="p-2.5">${esc(d.cluster)}</td><td class="p-2.5">${esc(d.zona)}</td>
-      <td class="p-2.5 text-slate-400">${esc(d.kategori||'CCTV')}</td>
+      <th class="p-2.5 text-left">Berbagi IP</th><th class="p-2.5 text-left">Status IP</th>
+      <th class="p-2.5 text-left">Perangkat</th><th class="p-2.5 text-right">Aksi</th></tr></thead>
+    <tbody>${sorted.length?sorted.map(d=>{ const E = canEdit(); return `<tr class="border-t border-line hover:bg-ink-700/50">
+      <td class="p-1.5 font-mono text-cyan2 whitespace-nowrap">${E?inp(d,'ip','font-mono !w-32 inline-block'):esc(d.ip)}</td>
+      <td class="p-1.5 text-white">${E?inp(d,'nama'):esc(d.nama)}</td>
+      <td class="p-1.5">${E?inp(d,'cluster'):esc(d.cluster)}</td><td class="p-1.5">${E?inp(d,'zona'):esc(d.zona)}</td>
+      <td class="p-1.5 text-slate-400">${E?sel(d,'kategori',['CCTV','NVR','Switch','Access Point','Access Control','Server','Lainnya']):esc(d.kategori||'CCTV')}</td>
       <td class="p-2.5">${sameIp(d)>1?`<span class="flag-ip" title="${devices.filter(x=>x.ip===d.ip).map(x=>esc(x.nama)).join(', ')}">${sameIp(d)} view</span>`:'<span class="text-slate-600 text-xs">—</span>'}</td>
-      <td class="p-2.5"><span class="text-xs px-2 py-0.5 rounded-full border ${d.ipStatus==='Reserved'?'border-maint text-maint':'border-on/50 text-on'}">${esc(d.ipStatus||'Used')}</span></td>
-      <td class="p-2.5">${statusPill(d.status)}</td></tr>`).join('') : `<tr><td colspan="8" class="p-8 text-center text-slate-500">Belum ada IP terdaftar.</td></tr>`}
+      <td class="p-1.5">${E?sel(d,'ipStatus',['Used','Reserved']):`<span class="text-xs px-2 py-0.5 rounded-full border ${d.ipStatus==='Reserved'?'border-maint text-maint':'border-on/50 text-on'}">${esc(d.ipStatus||'Used')}</span>`}</td>
+      <td class="p-1.5">${E?sel(d,'status',STATUS):statusPill(d.status)}</td>
+      <td class="p-1.5 text-right whitespace-nowrap">
+        <button data-act="detail" data-id="${d.id}" aria-label="Detail" class="px-2 py-1 rounded border border-line hover:border-cyan2"><i data-lucide="eye" class="w-3.5 h-3.5"></i></button>
+        ${E?`<button data-act="edit" data-id="${d.id}" aria-label="Edit lengkap" class="px-2 py-1 rounded border border-line hover:border-cyan2"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>`:''}
+        ${isAdmin()?`<button data-act="del" data-id="${d.id}" aria-label="Hapus" class="px-2 py-1 rounded border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`:''}
+      </td></tr>`; }).join('') : `<tr><td colspan="9" class="p-8 text-center text-slate-500">Belum ada IP terdaftar.</td></tr>`}
     </tbody></table>`;
+  if(canEdit()) $('#ipTable').insertAdjacentHTML('afterbegin',
+    `<p class="px-3 py-2 text-xs text-slate-500 border-b border-line">Sel IP, nama, cluster, zona, kategori, dan status bisa diubah langsung di tabel ini. Ikon pensil membuka form lengkap.</p>`);
   $('#segQuick').innerHTML = keys.map(s=>`<button data-seg="${s}" class="segpick text-xs font-mono px-2 py-1 rounded bg-ink-700 border border-line hover:border-cyan2">${s}</button>`).join('');
 }
 function scanFree(seg){
@@ -885,6 +1052,7 @@ function render(){
     $('#viewGrid').hidden = state.view!=='grid';
     $('#viewList').hidden = state.view!=='list';
     $('#viewMap').hidden  = state.view!=='map';
+    terapkanKolom();
     if(state.view==='grid') renderGrid();
     if(state.view==='list') renderList();
     if(state.view==='map')  renderMap();
@@ -892,6 +1060,197 @@ function render(){
   else renderLog();
   lucide.createIcons();
 }
+
+/* ============================ KERAPATAN GRID ============================ */
+function terapkanKolom(){
+  const g = $('#viewGrid');
+  const n = state.cols;
+  if(n === 'auto'){
+    g.className = 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4';
+    g.style.gridTemplateColumns = '';
+  }else{
+    g.className = 'grid gap-3';
+    /* di layar sempit tetap turun jadi 1–2 kolom supaya kartu tidak gepeng */
+    const lebar = window.innerWidth;
+    const efektif = lebar < 640 ? 1 : lebar < 1024 ? Math.min(+n,2) : lebar < 1536 ? Math.min(+n,4) : +n;
+    g.style.gridTemplateColumns = `repeat(${efektif}, minmax(0,1fr))`;
+  }
+  $('#densityWrap').hidden = !(state.tab==='monitor' && state.view==='grid');
+  $$('.col-btn').forEach(b=>b.className = `col-btn px-2 py-1 rounded text-xs ${b.dataset.cols===String(state.cols)?'bg-cyan2 text-ink-900 font-bold':'text-slate-400 hover:text-cyan2'}`);
+  /* kartu makin rapat, isinya makin ringkas */
+  g.dataset.rapat = (state.cols!=='auto' && +state.cols >= 6) ? '1' : '';
+}
+$$('.col-btn').forEach(b=>b.addEventListener('click', ()=>{
+  state.cols = b.dataset.cols; localStorage.setItem('cctvtmd_cols', state.cols); render();
+}));
+addEventListener('resize', ()=>{ if(state.tab==='monitor' && state.view==='grid') terapkanKolom(); });
+
+/* ============================ CHECKLIST HARIAN ============================ */
+const KONDISI = [['hidup','Hidup','on'],['mati','Mati','off'],['maintenance','Maintenance','maint']];
+const hariIni = () => new Date().toISOString().slice(0,10);
+
+function ckRingkasan(){
+  const f = filtered();
+  const r = { hidup:0, mati:0, maintenance:0, belum:0, total:f.length };
+  f.forEach(d=>{ const k = ck.items[d.id]; if(k) r[k]++; else r.belum++; });
+  return r;
+}
+function renderCkStats(){
+  const r = ckRingkasan();
+  $('#ckStats').innerHTML = [
+    ['Total diperiksa', r.total, 'text-white'], ['Hidup', r.hidup, 'text-on'],
+    ['Mati', r.mati, 'text-off'], ['Akan di-maintenance', r.maintenance, 'text-maint'],
+    ['Belum dicentang', r.belum, 'text-slate-400']
+  ].map(([l,v,c])=>`<div class="bg-ink-700 border border-line rounded px-3 py-2">
+      <div class="text-[11px] text-slate-500">${l}</div><div class="text-2xl font-bold font-mono ${c}">${v}</div></div>`).join('');
+}
+function renderCheck(){
+  const f = filtered();
+  $('#ckTable').innerHTML = `<table class="w-full text-sm min-w-[900px]">
+    <thead class="bg-ink-700 text-slate-400"><tr>
+      <th class="p-2.5 text-left">Nama device</th><th class="p-2.5 text-left">IP</th>
+      <th class="p-2.5 text-left">Cluster / zona</th>
+      <th class="p-2.5 text-center w-[320px]">Kondisi hari ini</th>
+      <th class="p-2.5 text-left">Catatan</th></tr></thead>
+    <tbody>${f.length ? f.map(d=>`<tr class="border-t border-line">
+      <td class="p-2 font-medium text-white">${esc(d.nama)}</td>
+      <td class="p-2 font-mono text-cyan2 whitespace-nowrap">${esc(d.ip)}${sameIp(d)>1?` <span class="flag-ip">${sameIp(d)}×</span>`:''}</td>
+      <td class="p-2 text-slate-400">${esc(d.cluster)} · ${esc(d.zona)}</td>
+      <td class="p-2">
+        <div class="flex gap-1 justify-center">
+          ${KONDISI.map(([k,l,c])=>`<button data-ck="${d.id}" data-kondisi="${k}"
+            class="ckbtn px-2.5 py-1.5 rounded-lg border text-xs font-semibold ${ck.items[d.id]===k?`bg-${c}/15 border-${c} text-${c}`:'border-line text-slate-400 hover:border-cyan2'}">${l}</button>`).join('')}
+        </div>
+      </td>
+      <td class="p-2"><input data-cknote="${d.id}" value="${esc(ck.catatan[d.id]||'')}" placeholder="opsional"
+            class="w-full bg-transparent border border-transparent hover:border-line focus:border-cyan2 rounded-lg px-2 py-1 text-xs focus:outline-none"></td>
+    </tr>`).join('') : `<tr><td colspan="5" class="p-8 text-center text-slate-500">Tidak ada device untuk diperiksa. Longgarkan filter.</td></tr>`}
+    </tbody></table>`;
+  renderCkStats();
+  if(!$('#ckTanggal').value) $('#ckTanggal').value = hariIni();
+  if(!$('#ckPic').value) $('#ckPic').value = (session?.email||'').split('@')[0];
+  if(ckRiwayat===null) muatRiwayatCk();
+}
+
+document.addEventListener('click', e=>{
+  const b = e.target.closest('.ckbtn');
+  if(b){
+    const id = b.dataset.ck;
+    ck.items[id] = (ck.items[id]===b.dataset.kondisi) ? undefined : b.dataset.kondisi;
+    if(!ck.items[id]) delete ck.items[id];
+    renderCheck(); lucide.createIcons(); return;
+  }
+  const f = e.target.closest('.ckFill');
+  if(f){
+    const v = f.dataset.fill;
+    if(!v) ck.items = {}; else filtered().forEach(d=>ck.items[d.id]=v);
+    renderCheck(); return;
+  }
+});
+document.addEventListener('input', e=>{
+  const n = e.target.closest('[data-cknote]');
+  if(n) ck.catatan[n.dataset.cknote] = n.value;
+});
+
+async function muatRiwayatCk(){
+  try{
+    ckRiwayat = await api.listChecklists();
+    $('#ckRiwayat').innerHTML = ckRiwayat.length
+      ? `<div class="grid gap-1.5">${ckRiwayat.slice(0,15).map(c=>`
+          <button data-ckopen="${c.tanggal}|${esc(c.pic)}" class="ckopen text-left px-3 py-2 rounded-lg border border-line hover:border-cyan2 flex flex-wrap gap-x-4 gap-y-1 items-center">
+            <span class="font-mono">${c.tanggal}</span>
+            <span class="text-white">${esc(c.pic)}</span>
+            <span class="text-on">${c.ringkasan?.hidup ?? 0} hidup</span>
+            <span class="text-off">${c.ringkasan?.mati ?? 0} mati</span>
+            <span class="text-maint">${c.ringkasan?.maintenance ?? 0} maintenance</span>
+            <span class="text-slate-500 ml-auto text-xs">dari ${c.ringkasan?.total ?? 0} device</span>
+          </button>`).join('')}</div>`
+      : '<p class="text-slate-500">Belum ada checklist tersimpan.</p>';
+  }catch(err){ $('#ckRiwayat').innerHTML = `<p class="text-off">Gagal memuat: ${esc(err.message||err)}</p>`; }
+}
+document.addEventListener('click', e=>{
+  const o = e.target.closest('.ckopen'); if(!o) return;
+  const [tgl, pic] = o.dataset.ckopen.split('|');
+  const c = (ckRiwayat||[]).find(x=>x.tanggal===tgl && x.pic===pic); if(!c) return;
+  $('#ckTanggal').value = c.tanggal; $('#ckPic').value = c.pic; $('#ckCatatan').value = c.catatan||'';
+  ck = { items:{}, catatan:{} };
+  (c.items||[]).forEach(it=>{ ck.items[it.device_id] = it.kondisi; if(it.catatan) ck.catatan[it.device_id] = it.catatan; });
+  renderCheck(); toast(`Checklist ${c.tanggal} dimuat.`);
+});
+$('#ckLoad').addEventListener('click', async ()=>{
+  await muatRiwayatCk();
+  const c = (ckRiwayat||[]).find(x=>x.tanggal===$('#ckTanggal').value && x.pic===$('#ckPic').value.trim());
+  if(!c){ toast('Belum ada checklist untuk tanggal dan PIC itu.','warn'); return; }
+  $('#ckCatatan').value = c.catatan||'';
+  ck = { items:{}, catatan:{} };
+  (c.items||[]).forEach(it=>{ ck.items[it.device_id] = it.kondisi; if(it.catatan) ck.catatan[it.device_id] = it.catatan; });
+  renderCheck(); toast('Checklist dimuat.');
+});
+
+function ckPayload(){
+  const f = filtered();
+  return {
+    tanggal: $('#ckTanggal').value || hariIni(),
+    pic: $('#ckPic').value.trim(),
+    catatan: $('#ckCatatan').value.trim(),
+    ringkasan: ckRingkasan(),
+    items: f.filter(d=>ck.items[d.id]).map(d=>({ device_id:d.id, nama:d.nama, ip:d.ip,
+      cluster:d.cluster, zona:d.zona, kondisi:ck.items[d.id], catatan:ck.catatan[d.id]||'' }))
+  };
+}
+$('#ckSave').addEventListener('click', async ()=>{
+  if(!canEdit()){ toast('Peran Anda tidak boleh menyimpan checklist.','err'); return; }
+  const data = ckPayload();
+  if(!data.pic){ toast('Isi dulu nama PIC yang memeriksa.','err'); return; }
+  if(!data.items.length){ toast('Belum ada satu pun device yang dicentang.','err'); return; }
+  try{
+    await api.saveChecklist(data);
+    if($('#ckSync').checked && canEdit()){
+      const peta = { hidup:'Online', mati:'Offline', maintenance:'Maintenance' };
+      let ubah = 0;
+      for(const it of data.items){
+        const d = devices.find(x=>x.id===it.device_id);
+        if(d && d.status !== peta[it.kondisi]){
+          await api.patch(d.id, { status: peta[it.kondisi] }); d.status = peta[it.kondisi]; ubah++;
+        }
+      }
+      if(ubah) toast(`Checklist disimpan. ${ubah} status device diperbarui.`);
+      else toast('Checklist disimpan.');
+      render();
+    } else toast('Checklist disimpan.');
+    ckRiwayat = null; muatRiwayatCk();
+  }catch(err){ toast('Gagal menyimpan checklist: '+(err.message||err),'err'); }
+});
+
+$('#ckPrint').addEventListener('click', ()=>{
+  const data = ckPayload(), r = data.ringkasan;
+  const baris = filtered().map(d=>{
+    const k = ck.items[d.id];
+    const tanda = kk => k===kk ? '✓' : '';
+    return `<tr><td>${esc(d.nama)}</td><td>${esc(d.ip)}</td><td>${esc(d.cluster)} / ${esc(d.zona)}</td>
+      <td style="text-align:center">${tanda('hidup')}</td><td style="text-align:center">${tanda('mati')}</td>
+      <td style="text-align:center">${tanda('maintenance')}</td><td>${esc(ck.catatan[d.id]||'')}</td></tr>`;
+  }).join('');
+  $('#printArea').innerHTML = `
+    <h1>Checklist Harian CCTV — TMD</h1>
+    <div>Tanggal pemeriksaan: <b>${esc(data.tanggal)}</b> &nbsp;·&nbsp; PIC: <b>${esc(data.pic||'—')}</b>
+      &nbsp;·&nbsp; Dicetak: ${new Date().toLocaleString('id-ID')}</div>
+    ${data.catatan?`<div>Catatan: ${esc(data.catatan)}</div>`:''}
+    <table class="ringkas"><thead><tr>
+      <th>Total device</th><th>Hidup</th><th>Mati</th><th>Akan di-maintenance</th><th>Belum dicentang</th></tr></thead>
+      <tbody><tr><td>${r.total}</td><td>${r.hidup}</td><td>${r.mati}</td><td>${r.maintenance}</td><td>${r.belum}</td></tr></tbody>
+    </table>
+    <table><thead><tr>
+      <th>Nama device</th><th>IP address</th><th>Cluster / zona</th>
+      <th>Hidup</th><th>Mati</th><th>Maintenance</th><th>Catatan</th></tr></thead>
+      <tbody>${baris || '<tr><td colspan="7">Tidak ada data.</td></tr>'}</tbody></table>
+    <div style="margin-top:26px; display:flex; gap:60px">
+      <div>Diperiksa oleh,<br><br><br><b>${esc(data.pic||'')}</b><div style="border-top:1px solid #000; width:170px"></div></div>
+      <div>Mengetahui,<br><br><br><br><div style="border-top:1px solid #000; width:170px"></div></div>
+    </div>`;
+  $('#printArea').hidden = false;
+  window.print();
+});
 
 /* ============================ RIWAYAT ============================ */
 let logRows = null, logLoading = false;
@@ -1053,22 +1412,55 @@ function openForm(id, prefillIp){
   $('#modal').hidden = false; lucide.createIcons();
   setTimeout(()=>$('#f_nama').focus(),30);
 }
-function paintFoto(){ $('#fotoPrev').innerHTML = pendingFoto ? `<img src="${esc(pendingFoto)}" alt="" class="w-full h-full object-cover">` : 'belum ada foto'; }
-const closeForm = () => $('#modal').hidden = true;
+function paintFoto(info){
+  const kosong = `<span class="flex flex-col items-center gap-1"><i data-lucide="image" class="w-5 h-5"></i>belum ada foto</span>`;
+  $('#fotoPrev').innerHTML = pendingFoto ? `<img src="${esc(pendingFoto)}" alt="" class="w-full h-full object-cover">` : kosong;
+  $('#fotoClear').hidden = !pendingFoto;
+  $('#fotoInfo').innerHTML = pendingFoto
+    ? (info || '<span class="text-on">Foto siap disimpan.</span> Klik area ini untuk mengganti.')
+    : 'Klik, atau jatuhkan gambar ke area ini. JPG / PNG / WebP, otomatis dikecilkan ke lebar 720px.';
+  lucide.createIcons();
+}
 
-$('#f_foto').addEventListener('change', e=>{
-  const file = e.target.files[0]; if(!file) return;
+/* satu jalur pemrosesan untuk klik maupun drag-and-drop */
+function prosesFoto(file){
+  if(!file) return;
+  if(!file.type.startsWith('image/')){ toast('File itu bukan gambar.','err'); return; }
+  const asal = (file.size/1024).toFixed(0);
+  $('#fotoInfo').textContent = 'Memproses gambar…';
   const r = new FileReader();
-  r.onload = ev=>{ const img = new Image();
-    img.onload = ()=>{ const sc = Math.min(1,720/img.width), cv = document.createElement('canvas');
+  r.onload = ev=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const sc = Math.min(1, 720/img.width), cv = document.createElement('canvas');
       cv.width = Math.round(img.width*sc); cv.height = Math.round(img.height*sc);
       cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
-      pendingFoto = cv.toDataURL('image/jpeg',.72); paintFoto(); };
-    img.onerror = ()=>toast('File gambar tidak terbaca.','err');
-    img.src = ev.target.result; };
+      pendingFoto = cv.toDataURL('image/jpeg',.72);
+      const jadi = (pendingFoto.length*0.75/1024).toFixed(0);
+      paintFoto(`<span class="text-on">${esc(file.name)}</span> · ${cv.width}×${cv.height} px · ${asal} KB → ${jadi} KB`);
+    };
+    img.onerror = ()=>{ toast('File gambar tidak terbaca.','err'); paintFoto(); };
+    img.src = ev.target.result;
+  };
   r.readAsDataURL(file);
+}
+const closeForm = () => $('#modal').hidden = true;
+
+$('#f_foto').addEventListener('change', e=>prosesFoto(e.target.files[0]));
+
+const zona = $('#dropFoto');
+zona.addEventListener('click', e=>{ if(!e.target.closest('#fotoClear')) $('#f_foto').click(); });
+zona.addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); $('#f_foto').click(); } });
+['dragenter','dragover'].forEach(ev=>zona.addEventListener(ev, e=>{ e.preventDefault(); zona.classList.add('is-over'); }));
+['dragleave','drop'].forEach(ev=>zona.addEventListener(ev, e=>{ e.preventDefault(); zona.classList.remove('is-over'); }));
+zona.addEventListener('drop', e=>prosesFoto(e.dataTransfer.files[0]));
+/* tempel langsung dari papan klip saat form terbuka */
+document.addEventListener('paste', e=>{
+  if($('#modal').hidden) return;
+  const item = [...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'));
+  if(item) prosesFoto(item.getAsFile());
 });
-$('#fotoClear').addEventListener('click', ()=>{ pendingFoto=null; $('#f_foto').value=''; paintFoto(); });
+$('#fotoClear').addEventListener('click', e=>{ e.stopPropagation(); pendingFoto=null; $('#f_foto').value=''; paintFoto(); });
 
 $('#form').addEventListener('submit', async e=>{
   e.preventDefault();
