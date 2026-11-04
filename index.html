@@ -309,6 +309,7 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
             <div id="modeLabel" class="mt-0.5"></div>
           </div>
           <button id="btnImport" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="upload" class="w-4 h-4 text-cyan2"></i> Impor CSV</button>
+          <button id="btnPeta" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="map-pinned" class="w-4 h-4 text-cyan2"></i> Impor dari Peta Pandang</button>
           <button id="btnTemplate" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="file-down" class="w-4 h-4 text-cyan2"></i> Unduh template CSV</button>
           <button id="btnExport" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="download" class="w-4 h-4 text-cyan2"></i> Ekspor semua data</button>
           <button id="btnSeed" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2 text-amber-400"><i data-lucide="refresh-cw" class="w-4 h-4"></i> Muat data contoh</button>
@@ -318,6 +319,7 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
         </div>
       </div>
       <input id="fileCsv" type="file" accept=".csv,text/csv" hidden>
+      <input id="filePeta" type="file" accept=".html,text/html" hidden>
     </div>
   </div>
   <div class="px-3 md:px-5 pb-2.5 grid grid-cols-2 md:grid-cols-5 gap-2" id="stats"></div>
@@ -553,6 +555,17 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
       <button id="teamClose" aria-label="Tutup" class="text-slate-400 hover:text-off"><i data-lucide="x" class="w-5 h-5"></i></button>
     </div>
     <div id="teamBody" class="p-5"></div>
+  </div>
+</div>
+
+<!-- ========== IMPOR DARI PETA PANDANG ========== -->
+<div id="peta" hidden class="fixed inset-0 z-[1100] bg-black/70 backdrop-blur-sm overflow-y-auto p-3 md:p-6">
+  <div class="max-w-4xl mx-auto bg-ink-800 border border-line rounded-lg shadow-2xl fade">
+    <div class="flex items-center justify-between px-5 py-3 border-b border-line sticky top-0 bg-ink-800 rounded-t-lg">
+      <h3 class="font-bold text-white">Impor foto &amp; koordinat dari Peta Pandang</h3>
+      <button id="petaClose" aria-label="Tutup" class="text-slate-400 hover:text-off"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <div id="petaBody" class="p-5"></div>
   </div>
 </div>
 
@@ -1730,6 +1743,163 @@ async function importCsv(text){
   catch(err){ toast('Impor gagal: '+(err.message||err),'err'); }
 }
 
+/* ============================ IMPOR DARI PETA PANDANG ============================ */
+/* File "Peta Pandang CCTV" menyimpan datanya di <script id="data" type="application/json">.
+   Setiap entri: {nama, kategori, area, x(lng), y(lat), lokasi, img(base64 JPEG tanpa awalan)}. */
+let petaData = null, petaCocok = null;
+
+/* Nama dicocokkan longgar: huruf besar, tanpa tanda baca, nol di depan diabaikan,
+   awalan "CCTV" diabaikan. CBD-KGK-001 cocok dengan CBD-KGK-01. */
+function kunciNama(n){
+  const a = String(n||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const b = a.replace(/0+(\d)/g,'$1');
+  return [a, b, b.replace(/^CCTV/,'')];
+}
+function cocokkanPeta(entri){
+  const indeks = new Map();
+  devices.forEach(d=>kunciNama(d.nama).forEach(k=>{ if(!indeks.has(k)) indeks.set(k, []); indeks.get(k).push(d); }));
+  const hasil = [], gagal = [];
+  const sudah = new Set();
+  entri.forEach(e=>{
+    let target = null;
+    for(const k of kunciNama(e.nama)){ if(indeks.has(k)){ target = indeks.get(k); break; } }
+    if(!target){ gagal.push(e); return; }
+    target.forEach(d=>{
+      const kunci = d.id + '|' + e.nama;
+      if(sudah.has(kunci)) return;
+      sudah.add(kunci);
+      hasil.push({ e, d });
+    });
+  });
+  return { hasil, gagal };
+}
+
+$('#btnPeta').addEventListener('click', ()=>$('#filePeta').click());
+$('#filePeta').addEventListener('change', e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = ev=>{ bacaPeta(ev.target.result); $('#filePeta').value=''; };
+  r.readAsText(f);
+});
+
+function bacaPeta(teks){
+  const m = teks.match(/<script id="data" type="application\/json">([\s\S]*?)<\/script>/);
+  if(!m){ toast('File itu bukan Peta Pandang CCTV — blok datanya tidak ditemukan.','err'); return; }
+  try{ petaData = JSON.parse(m[1]); }
+  catch(err){ toast('Data di dalam file tidak terbaca: '+(err.message||err),'err'); return; }
+  if(!Array.isArray(petaData) || !petaData.length){ toast('Data peta kosong.','err'); return; }
+  petaCocok = cocokkanPeta(petaData);
+  tampilkanPratinjauPeta();
+}
+
+function tampilkanPratinjauPeta(){
+  const { hasil, gagal } = petaCocok;
+  const adaFoto = hasil.filter(h=>h.e.img).length;
+  const adaKoor = hasil.filter(h=>h.e.x && h.e.y).length;
+  const timpaKoor = hasil.filter(h=>h.d.lat && h.d.lng).length;
+  const timpaFoto = hasil.filter(h=>h.d.foto).length;
+  $('#petaBody').innerHTML = `
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+      ${[['Entri di file', petaData.length, 'text-white'],
+         ['Cocok dengan database', hasil.length, 'text-on'],
+         ['Tidak ada pasangannya', gagal.length, 'text-maint'],
+         ['Device belum punya foto', hasil.length - timpaFoto, 'text-cyan2']]
+        .map(([l,v,c])=>`<div class="bg-ink-700 border border-line rounded px-3 py-2">
+            <div class="text-[11px] text-slate-500">${l}</div><div class="text-2xl font-bold font-mono ${c}">${v}</div></div>`).join('')}
+    </div>
+
+    <div class="grid gap-2 mb-4">
+      <label class="flex items-center gap-2 text-sm cursor-pointer">
+        <input id="pkKoor" type="checkbox" checked class="w-4 h-4"> Perbarui koordinat (${adaKoor} entri punya koordinat)</label>
+      <label class="flex items-center gap-2 text-sm cursor-pointer">
+        <input id="pkFoto" type="checkbox" checked class="w-4 h-4"> Perbarui foto view (${adaFoto} entri punya foto)</label>
+      <label class="flex items-center gap-2 text-sm cursor-pointer">
+        <input id="pkTimpa" type="checkbox" class="w-4 h-4"> Timpa data yang sudah terisi
+        <span class="text-xs text-slate-500">(${timpaKoor} sudah punya koordinat, ${timpaFoto} sudah punya foto)</span></label>
+      <label class="flex items-center gap-2 text-sm cursor-pointer">
+        <input id="pkLokasi" type="checkbox" class="w-4 h-4"> Isi catatan dengan keterangan lokasi dari peta</label>
+    </div>
+
+    <div class="border border-line rounded overflow-hidden mb-4">
+      <div class="px-3 py-2 bg-ink-700 text-xs text-slate-400">Pasangan yang ditemukan (15 pertama dari ${hasil.length})</div>
+      <div class="max-h-64 overflow-y-auto">
+        <table class="w-full text-xs">
+          <thead class="bg-ink-700 text-slate-500"><tr>
+            <th class="p-2 text-left">Foto</th><th class="p-2 text-left">Nama di peta</th>
+            <th class="p-2 text-left">Device di database</th><th class="p-2 text-left">Koordinat</th>
+            <th class="p-2 text-left">Lokasi</th></tr></thead>
+          <tbody>${hasil.slice(0,15).map(({e,d})=>`<tr class="border-t border-line">
+            <td class="p-1.5">${e.img?`<img src="data:image/jpeg;base64,${e.img}" class="w-14 h-10 object-cover rounded">`:'<span class="text-slate-600">—</span>'}</td>
+            <td class="p-2 font-mono">${esc(e.nama)}</td>
+            <td class="p-2 text-white">${esc(d.nama)} <span class="text-slate-500 font-mono">${esc(d.ip)}</span></td>
+            <td class="p-2 font-mono text-slate-400">${(+e.y).toFixed(6)}, ${(+e.x).toFixed(6)}</td>
+            <td class="p-2 text-slate-400">${esc(e.lokasi||'—')}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>
+
+    ${gagal.length?`<details class="border border-line rounded mb-4">
+      <summary class="px-3 py-2 text-sm cursor-pointer text-maint">${gagal.length} entri peta tanpa pasangan di database — klik untuk melihat</summary>
+      <div class="p-3 text-xs font-mono text-slate-400 max-h-40 overflow-y-auto">${gagal.map(g=>esc(g.nama)).join('<br>')}</div>
+      <div class="px-3 pb-3"><button id="pkUnduhGagal" class="text-xs text-cyan2 hover:underline">Unduh daftarnya sebagai CSV</button></div>
+    </details>`:''}
+
+    <div id="pkProgres" class="hidden mb-3">
+      <div class="h-2 bg-ink-600 rounded overflow-hidden"><div id="pkBar" class="h-full bg-cyan2" style="width:0%"></div></div>
+      <p id="pkStatus" class="text-xs text-slate-500 mt-1.5"></p>
+    </div>
+
+    <div class="flex justify-end gap-2 pt-3 border-t border-line">
+      <button id="pkBatal" class="px-4 py-2 rounded border border-line text-sm">Batal</button>
+      <button id="pkJalan" class="px-4 py-2 rounded bg-cyan2 text-ink-900 font-bold text-sm">Terapkan ke ${hasil.length} device</button>
+    </div>`;
+  $('#peta').hidden = false;
+  lucide.createIcons();
+
+  $('#pkBatal').addEventListener('click', ()=>$('#peta').hidden = true);
+  const g = $('#pkUnduhGagal');
+  if(g) g.addEventListener('click', ()=>dl('peta-tanpa-pasangan.csv',
+    ['nama,area,lokasi,latitude,longitude', ...petaCocok.gagal.map(x=>`"${x.nama}","${x.area||''}","${x.lokasi||''}",${x.y},${x.x}`)].join('\n')));
+  $('#pkJalan').addEventListener('click', terapkanPeta);
+}
+
+async function terapkanPeta(){
+  if(!canEdit()){ toast('Peran Anda tidak boleh mengubah data.','err'); return; }
+  const pakaiKoor = $('#pkKoor').checked, pakaiFoto = $('#pkFoto').checked;
+  const timpa = $('#pkTimpa').checked, pakaiLokasi = $('#pkLokasi').checked;
+  const daftar = petaCocok.hasil;
+  $('#pkProgres').classList.remove('hidden');
+  $('#pkJalan').disabled = true; $('#pkJalan').textContent = 'Sedang berjalan…';
+
+  let ubah = 0, lewat = 0, gagal = 0;
+  for(let i=0;i<daftar.length;i++){
+    const { e, d } = daftar[i];
+    $('#pkBar').style.width = Math.round((i+1)/daftar.length*100) + '%';
+    $('#pkStatus').textContent = `${i+1} / ${daftar.length} — ${d.nama}`;
+    const rec = { ...d };
+    let perlu = false;
+    if(pakaiKoor && e.y && e.x && (timpa || !(d.lat && d.lng))){
+      rec.lat = (+e.y).toFixed(7); rec.lng = (+e.x).toFixed(7); perlu = true;
+    }
+    if(pakaiFoto && e.img && (timpa || !d.foto)){
+      rec.foto = 'data:image/jpeg;base64,' + e.img; perlu = true;
+    }
+    if(pakaiLokasi && e.lokasi && (timpa || !d.catatan)){ rec.catatan = e.lokasi; perlu = true; }
+    if(!perlu){ lewat++; continue; }
+    try{
+      await api.upsert(rec);
+      Object.assign(d, rec);
+      ubah++;
+    }catch(err){ gagal++; console.error(d.nama, err); }
+  }
+  $('#pkStatus').innerHTML = `<span class="text-on">Selesai.</span> ${ubah} device diperbarui, ${lewat} dilewati karena sudah terisi${gagal?`, <span class="text-off">${gagal} gagal</span>`:''}.`;
+  $('#pkJalan').textContent = 'Selesai';
+  await reload();
+  toast(`${ubah} device diperbarui dari Peta Pandang.`, gagal?'warn':'ok');
+}
+$('#petaClose').addEventListener('click', ()=>$('#peta').hidden = true);
+$('#peta').addEventListener('click', e=>{ if(e.target.id==='peta') $('#peta').hidden = true; });
+
 /* ============================ EVENTS ============================ */
 /* tombol kembalikan lebar kolom */
 document.addEventListener('click', e=>{
@@ -1844,4 +2014,3 @@ setInterval(()=>{ const c=$('#clock'); if(c) c.textContent = new Date().toLocale
 </script>
 </body>
 </html>
-
