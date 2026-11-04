@@ -147,6 +147,20 @@ article{ transition:transform .16s ease, box-shadow .16s ease, border-color .16s
 thead .col-aksi{ background:rgb(var(--c-raised)) }
 tbody tr:hover .col-aksi{ background:rgb(var(--c-raised)) }
 
+/* ---------- kolom tabel yang bisa ditarik lebarnya ---------- */
+table.lebar-bisa-ditarik{ table-layout:fixed; width:max-content; min-width:100% }
+table.lebar-bisa-ditarik th{ position:relative; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+table.lebar-bisa-ditarik td{ overflow:hidden; text-overflow:ellipsis }
+table.lebar-bisa-ditarik td.p-1\.5 > input,
+table.lebar-bisa-ditarik td > input.cell-edit{ max-width:100% }
+.penarik{ position:absolute; top:0; right:-3px; width:8px; height:100%; cursor:col-resize;
+  z-index:5; touch-action:none; user-select:none }
+.penarik::after{ content:''; position:absolute; left:3px; top:18%; height:64%; width:2px;
+  background:rgb(var(--c-line)); border-radius:2px; transition:background .12s ease }
+.penarik:hover::after,.penarik.aktif::after{ background:rgb(var(--c-accent)); width:3px; left:2.5px }
+body.sedang-menarik{ cursor:col-resize !important; user-select:none !important }
+body.sedang-menarik *{ cursor:col-resize !important }
+
 /* ---------- cetak laporan checklist ---------- */
 #printArea{ display:none }
 @media print{
@@ -1016,8 +1030,13 @@ function renderList(){
         ${isAdmin()?`<button data-act="del" data-id="${d.id}" title="Hapus device" class="px-2 py-1.5 rounded-lg border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`:''}
       </td></tr>`; }).join('') : `<tr><td colspan="12" class="p-8 text-center text-slate-500">Tidak ada data yang cocok.</td></tr>`}
     </tbody></table>`;
-  if(canEdit()) $('#viewList').insertAdjacentHTML('afterbegin',
-    `<p class="px-3 py-2 text-xs text-slate-500 border-b border-line">Klik sel mana pun untuk mengubah langsung — perubahan tersimpan saat Anda pindah sel atau menekan Enter.</p>`);
+  $('#viewList').insertAdjacentHTML('afterbegin',
+    `<p class="px-3 py-2 text-xs text-slate-500 border-b border-line flex flex-wrap gap-x-3 gap-y-1 items-center">
+      ${canEdit()?'<span>Klik sel mana pun untuk mengubah langsung — tersimpan saat pindah sel atau menekan Enter.</span>':''}
+      <span>Tarik garis pemisah di kepala kolom untuk mengatur lebar; klik dua kali untuk mengembalikan.</span>
+      <button data-resetlebar="list" class="ml-auto text-cyan2 hover:underline">Kembalikan semua lebar kolom</button>
+    </p>`);
+  pasangPenarik('#viewList', 'list');
 }
 function initMap(){
   if(map) return;
@@ -1081,8 +1100,13 @@ function renderIpdb(){
         ${isAdmin()?`<button data-act="del" data-id="${d.id}" aria-label="Hapus" class="px-2 py-1 rounded border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`:''}
       </td></tr>`; }).join('') : `<tr><td colspan="9" class="p-8 text-center text-slate-500">Belum ada IP terdaftar.</td></tr>`}
     </tbody></table>`;
-  if(canEdit()) $('#ipTable').insertAdjacentHTML('afterbegin',
-    `<p class="px-3 py-2 text-xs text-slate-500 border-b border-line">Sel IP, nama, cluster, zona, kategori, dan status bisa diubah langsung di tabel ini. Ikon pensil membuka form lengkap.</p>`);
+  $('#ipTable').insertAdjacentHTML('afterbegin',
+    `<p class="px-3 py-2 text-xs text-slate-500 border-b border-line flex flex-wrap gap-x-3 gap-y-1 items-center">
+      ${canEdit()?'<span>Sel IP, nama, cluster, zona, kategori, dan status bisa diubah langsung di sini. Tombol Edit membuka form lengkap.</span>':''}
+      <span>Lebar kolom bisa ditarik.</span>
+      <button data-resetlebar="ipdb" class="ml-auto text-cyan2 hover:underline">Kembalikan lebar kolom</button>
+    </p>`);
+  pasangPenarik('#ipTable', 'ipdb');
   $('#segQuick').innerHTML = keys.map(s=>`<button data-seg="${s}" class="segpick text-xs font-mono px-2 py-1 rounded bg-ink-700 border border-line hover:border-cyan2">${s}</button>`).join('');
 }
 function scanFree(seg){
@@ -1119,6 +1143,73 @@ function render(){
   else if(state.tab==='check') renderCheck();
   else renderLog();
   lucide.createIcons();
+}
+
+/* ============================ LEBAR KOLOM BISA DITARIK ============================ */
+/* Lebar tiap kolom disimpan per tabel di browser, jadi tidak perlu diatur ulang
+   setiap kali halaman dibuka. Klik dua kali pada garis pemisah untuk mengembalikan. */
+const lebarTersimpan = key => { try{ return JSON.parse(localStorage.getItem('cctvtmd_lebar_'+key)||'{}'); }catch{ return {}; } };
+const simpanLebar = (key,obj) => { try{ localStorage.setItem('cctvtmd_lebar_'+key, JSON.stringify(obj)); }catch(e){} };
+
+function pasangPenarik(wadahSel, key){
+  const tabel = document.querySelector(wadahSel + ' table');
+  if(!tabel) return;
+  tabel.classList.add('lebar-bisa-ditarik');
+  const kepala = [...tabel.querySelectorAll('thead th')];
+  if(!kepala.length) return;
+
+  const tersimpan = lebarTersimpan(key);
+  /* Ukur lebar alami dulu, baru kunci — supaya tabel tidak melompat saat dipasang. */
+  const alami = kepala.map(th => Math.max(60, Math.round(th.getBoundingClientRect().width)));
+  kepala.forEach((th,i)=>{
+    const w = tersimpan[i] || alami[i];
+    th.style.width = w + 'px';
+    if(th.querySelector('.penarik')) return;
+    const p = document.createElement('div');
+    p.className = 'penarik';
+    p.title = 'Tarik untuk mengubah lebar kolom. Klik dua kali untuk mengembalikan.';
+    th.appendChild(p);
+
+    let mulaiX = 0, mulaiW = 0;
+    const geser = e =>{
+      const x = (e.touches?.[0]?.clientX ?? e.clientX);
+      const baru = Math.max(56, mulaiW + (x - mulaiX));
+      th.style.width = baru + 'px';
+    };
+    const selesai = ()=>{
+      document.removeEventListener('pointermove', geser);
+      document.removeEventListener('pointerup', selesai);
+      document.body.classList.remove('sedang-menarik');
+      p.classList.remove('aktif');
+      const simpan = lebarTersimpan(key);
+      simpan[i] = Math.round(th.getBoundingClientRect().width);
+      simpanLebar(key, simpan);
+    };
+    p.addEventListener('pointerdown', e=>{
+      e.preventDefault(); e.stopPropagation();
+      mulaiX = e.clientX; mulaiW = th.getBoundingClientRect().width;
+      document.body.classList.add('sedang-menarik');
+      p.classList.add('aktif');
+      document.addEventListener('pointermove', geser);
+      document.addEventListener('pointerup', selesai);
+    });
+    /* klik dua kali pada pemisah: kembalikan kolom ini ke lebar alami */
+    p.addEventListener('dblclick', e=>{
+      e.preventDefault(); e.stopPropagation();
+      const simpan = lebarTersimpan(key); delete simpan[i]; simpanLebar(key, simpan);
+      th.style.width = alami[i] + 'px';
+      toast('Lebar kolom dikembalikan.');
+    });
+    /* jangan picu pengurutan saat menarik */
+    p.addEventListener('click', e=>e.stopPropagation());
+  });
+}
+/* kembalikan seluruh lebar pada satu tabel */
+function resetLebar(key, wadahSel){
+  try{ localStorage.removeItem('cctvtmd_lebar_'+key); }catch(e){}
+  const t = document.querySelector(wadahSel + ' table');
+  if(t) t.querySelectorAll('thead th').forEach(th=>th.style.width='');
+  render();
 }
 
 /* ============================ KERAPATAN GRID ============================ */
@@ -1186,6 +1277,7 @@ function renderCheck(){
             class="w-full bg-transparent border border-transparent hover:border-line focus:border-cyan2 rounded-lg px-2 py-1 text-xs focus:outline-none"></td>
     </tr>`).join('') : `<tr><td colspan="5" class="p-8 text-center text-slate-500">Tidak ada device untuk diperiksa. Longgarkan filter.</td></tr>`}
     </tbody></table>`;
+  pasangPenarik('#ckTable', 'check');
   renderCkStats();
   if(!$('#ckTanggal').value) $('#ckTanggal').value = hariIni();
   if(!$('#ckPic').value) $('#ckPic').value = (session?.email||'').split('@')[0];
@@ -1373,6 +1465,7 @@ function renderLog(){
       </tr>`; }).join('')
       : `<tr><td colspan="5" class="p-8 text-center text-slate-500">Belum ada catatan perubahan.</td></tr>`}
     </tbody></table>`;
+  pasangPenarik('#logTable', 'log');
 }
 $('#logRefresh').addEventListener('click', ()=>loadLog(true).then(renderLog));
 let lt; $('#logQ').addEventListener('input', ()=>{ clearTimeout(lt); lt=setTimeout(renderLog,180); });
@@ -1638,6 +1731,12 @@ async function importCsv(text){
 }
 
 /* ============================ EVENTS ============================ */
+/* tombol kembalikan lebar kolom */
+document.addEventListener('click', e=>{
+  const r = e.target.closest('[data-resetlebar]');
+  if(r){ e.preventDefault(); resetLebar(r.dataset.resetlebar, r.dataset.resetlebar==='list'?'#viewList':'#ipTable'); toast('Lebar kolom dikembalikan.'); }
+});
+
 document.addEventListener('click', async e=>{
   const act = e.target.closest('[data-act]');
   if(act){ const d = devices.find(x=>x.id===act.dataset.id); if(!d) return;
@@ -1745,3 +1844,4 @@ setInterval(()=>{ const c=$('#clock'); if(c) c.textContent = new Date().toLocale
 </script>
 </body>
 </html>
+
