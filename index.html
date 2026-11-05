@@ -23,7 +23,7 @@
 ===================================================================== */
 const SUPABASE_URL      = "https://pvsjvvovqcvvcpiozxzt.supabase.co";   // contoh: "https://abcdefgh.supabase.co"
 const SUPABASE_ANON_KEY = "sb_publishable_YMsD51FNdhadl7B7mIfJJw_5-IbDL0U";   // anon / publishable key (bukan service_role)
-
+   
 /* Pendaftaran mandiri. false = hanya Administrator yang membuat akun, lewat
    Supabase Dashboard > Authentication > Users > Add user (centang auto confirm).
    Akun baru masuk sebagai "Menunggu persetujuan" dan diberi peran lewat
@@ -136,6 +136,13 @@ article{ transition:transform .16s ease, box-shadow .16s ease, border-color .16s
 .cell-edit:focus{ outline:none; border-color:rgb(var(--c-accent)); background:rgb(var(--c-raised)) }
 .cell-edit.tersimpan{ animation:simpan 1s ease }
 @keyframes simpan{ 0%{ background:rgb(var(--c-on)/.25) } 100%{ background:transparent } }
+
+/* ---------- status penanda IP bersama ---------- */
+button.flag-ip{ cursor:pointer }
+button.flag-ip:hover{ filter:brightness(1.12) }
+.fi-cek{ color:rgb(var(--c-maint)); background:rgb(var(--c-maint)/.13); border-color:rgb(var(--c-maint)/.35) }
+.fi-sah{ color:rgb(var(--c-accent)); background:rgb(var(--c-accent)/.12); border-color:rgb(var(--c-accent)/.35) }
+.fi-dup{ color:rgb(var(--c-off)); background:rgb(var(--c-off)/.13); border-color:rgb(var(--c-off)/.38) }
 
 /* ---------- tautan IP ---------- */
 .ip-link{ color:rgb(var(--c-accent)); text-decoration:none; border-bottom:1px dotted rgb(var(--c-accent)/.5) }
@@ -309,6 +316,7 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
             <div id="modeLabel" class="mt-0.5"></div>
           </div>
           <button id="btnImport" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="upload" class="w-4 h-4 text-cyan2"></i> Impor CSV</button>
+          <button id="btnKatalog" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="book-marked" class="w-4 h-4 text-cyan2"></i> Katalog spesifikasi</button>
           <button id="btnPeta" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="map-pinned" class="w-4 h-4 text-cyan2"></i> Impor dari Peta Pandang</button>
           <button id="btnTemplate" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="file-down" class="w-4 h-4 text-cyan2"></i> Unduh template CSV</button>
           <button id="btnExport" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="download" class="w-4 h-4 text-cyan2"></i> Ekspor semua data</button>
@@ -460,7 +468,21 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
       <label class="text-sm">Longitude<input id="f_lng" placeholder="106.816666" class="inp font-mono"></label>
       <details class="md:col-span-2 border border-line rounded bg-ink-900/40" open>
         <summary class="px-3 py-2 text-sm font-semibold text-slate-300 cursor-pointer select-none">Spesifikasi perangkat</summary>
-        <div class="p-3 pt-1 grid gap-3 md:grid-cols-3">
+        <div class="px-3 pt-1 pb-3 border-b border-line">
+          <div class="flex flex-wrap items-end gap-2">
+            <label class="text-sm flex-1 min-w-[260px]">Ambil dari katalog spesifikasi
+              <select id="f_katalog" class="inp"><option value="">— pilih model, sisanya terisi sendiri —</option></select>
+            </label>
+            <button type="button" id="btnSimpanSpek" class="px-3 py-2 rounded-xl border border-line text-sm hover:border-cyan2 flex items-center gap-1.5">
+              <i data-lucide="bookmark-plus" class="w-4 h-4"></i> Simpan sebagai model baru
+            </button>
+            <button type="button" id="btnKelolaSpek" class="px-3 py-2 rounded-xl border border-line text-sm hover:border-cyan2 flex items-center gap-1.5">
+              <i data-lucide="settings-2" class="w-4 h-4"></i> Kelola katalog
+            </button>
+          </div>
+          <p class="text-xs text-slate-500 mt-1.5">Mengisi brand, seri, bentuk, resolusi, lensa, IR, fitur, dan sumber daya. Serial number, MAC, firmware, tanggal pasang, dan garansi tetap diisi manual karena unik per unit.</p>
+        </div>
+        <div class="p-3 pt-3 grid gap-3 md:grid-cols-3">
           <label class="text-sm md:col-span-2">Seri / model
             <input id="f_seri" list="seriList" placeholder="DS-2CD2143G2-I" class="inp font-mono">
             <datalist id="seriList"></datalist>
@@ -569,6 +591,17 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
   </div>
 </div>
 
+<!-- ========== KATALOG SPESIFIKASI ========== -->
+<div id="katalog" hidden class="fixed inset-0 z-[1100] bg-black/70 backdrop-blur-sm overflow-y-auto p-3 md:p-6">
+  <div class="max-w-4xl mx-auto bg-ink-800 border border-line rounded-lg shadow-2xl fade">
+    <div class="flex items-center justify-between px-5 py-3 border-b border-line sticky top-0 bg-ink-800 rounded-t-lg">
+      <h3 class="font-bold text-white">Katalog spesifikasi perangkat</h3>
+      <button id="katalogClose" aria-label="Tutup" class="text-slate-400 hover:text-off"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <div id="katalogBody" class="p-5"></div>
+  </div>
+</div>
+
 <div id="printArea" hidden></div>
 
 <div id="toast" class="fixed bottom-4 right-4 z-[2000] space-y-2"></div>
@@ -625,14 +658,18 @@ const fromRow = r => ({ id:r.id, nama:r.nama, ip:r.ip, portHttp:r.port_http, por
   ipStatus:r.ip_status, lat:r.lat ?? '', lng:r.lng ?? '', foto:r.foto,
   seri:r.seri||'', tipeKamera:r.tipe_kamera||'', resolusi:r.resolusi||'', lensa:r.lensa_mm||'',
   ir:r.ir_m||'', fitur:r.fitur||'', serial:r.serial_number||'', mac:r.mac||'', firmware:r.firmware||'',
-  daya:r.daya||'', tglPasang:r.tgl_pasang||'', garansi:r.garansi_sampai||'', catatan:r.catatan||'' });
+  daya:r.daya||'', tglPasang:r.tgl_pasang||'', garansi:r.garansi_sampai||'', catatan:r.catatan||'',
+  ipBersamaOk: (r.ip_bersama_ok === null || r.ip_bersama_ok === undefined) ? null : !!r.ip_bersama_ok,
+  ipBersamaOleh: r.ip_bersama_oleh||'' });
 const toRow = d => ({ id:d.id, nama:d.nama, ip:d.ip, port_http:d.portHttp, port_rtsp:d.portRtsp,
   brand:d.brand, kategori:d.kategori, cluster:d.cluster, zona:d.zona, status:d.status,
   ip_status:d.ipStatus, lat:d.lat===''?null:+d.lat, lng:d.lng===''?null:+d.lng, foto:d.foto,
   seri:d.seri||null, tipe_kamera:d.tipeKamera||null, resolusi:d.resolusi||null, lensa_mm:d.lensa||null,
   ir_m:d.ir||null, fitur:d.fitur||null, serial_number:d.serial||null, mac:d.mac||null,
   firmware:d.firmware||null, daya:d.daya||null, tgl_pasang:d.tglPasang||null,
-  garansi_sampai:d.garansi||null, catatan:d.catatan||null });
+  garansi_sampai:d.garansi||null, catatan:d.catatan||null,
+  ip_bersama_ok: (d.ipBersamaOk === null || d.ipBersamaOk === undefined) ? null : !!d.ipBersamaOk,
+  ip_bersama_oleh: d.ipBersamaOleh||null });
 
 const BUCKET = 'cctv-foto';
 
@@ -670,6 +707,40 @@ const api = {
     if(!CLOUD){ const i = devices.findIndex(x=>x.id===id); if(i>-1) Object.assign(devices[i], kolom); return saveLocal(); }
     const { error } = await sb.from('devices').update(kolom).eq('id', id);
     if(error) throw error;
+  },
+  async listSpek(){
+    if(!CLOUD){ try{ return JSON.parse(localStorage.getItem('cctvtmd_spek::'+(session?.email||'anon'))||'[]'); }catch{ return []; } }
+    const { data, error } = await sb.from('spek_katalog').select('*').order('dipakai',{ascending:false}).order('label');
+    if(error) throw error;
+    return data||[];
+  },
+  async saveSpek(sp){
+    if(!CLOUD){
+      const key='cctvtmd_spek::'+(session?.email||'anon');
+      let arr=[]; try{ arr=JSON.parse(localStorage.getItem(key)||'[]'); }catch{}
+      const i=arr.findIndex(x=>x.label===sp.label);
+      i>-1 ? arr[i]={...arr[i],...sp} : arr.push({ ...sp, id:uid(), dipakai:0 });
+      localStorage.setItem(key, JSON.stringify(arr)); return;
+    }
+    const baris = { label:sp.label, brand:sp.brand||null, seri:sp.seri||null, tipe_kamera:sp.tipeKamera||null,
+      resolusi:sp.resolusi||null, lensa_mm:sp.lensa||null, ir_m:sp.ir||null, fitur:sp.fitur||null,
+      daya:sp.daya||null, kategori:sp.kategori||'CCTV', catatan:sp.catatan||null };
+    if(sp.id) baris.id = sp.id;
+    const { error } = await sb.from('spek_katalog').upsert(baris, { onConflict:'label' });
+    if(error) throw error;
+  },
+  async hapusSpek(id){
+    if(!CLOUD){
+      const key='cctvtmd_spek::'+(session?.email||'anon');
+      let arr=[]; try{ arr=JSON.parse(localStorage.getItem(key)||'[]'); }catch{}
+      localStorage.setItem(key, JSON.stringify(arr.filter(x=>x.id!==id))); return;
+    }
+    const { error } = await sb.from('spek_katalog').delete().eq('id', id);
+    if(error) throw error;
+  },
+  async hitungPakaiSpek(sp){
+    if(!CLOUD || !sp?.id) return;
+    try{ await sb.from('spek_katalog').update({ dipakai:(sp.dipakai||0)+1 }).eq('id', sp.id); }catch(e){}
   },
   async listChecklists(limit = 60){
     if(!CLOUD){ try{ return JSON.parse(localStorage.getItem('cctvtmd_checklists::'+(session?.email||'anon'))||'[]'); }catch{ return []; } }
@@ -854,6 +925,7 @@ async function enterApp(){
   logRows = null;
   $('#btnTeam').hidden = !(CLOUD && isAdmin());
   await reload();
+  await muatKatalog();
   lucide.createIcons();
 }
 
@@ -924,7 +996,11 @@ function filtered(){
     if(state.zona    && d.zona   !==state.zona)    return false;
     if(state.brand   && d.brand  !==state.brand)   return false;
     if(state.status  && d.status !==state.status)  return false;
-    if(state.shared  && devices.filter(x=>x.ip===d.ip).length < 2) return false;
+    if(state.shared){
+      if(devices.filter(x=>x.ip===d.ip).length < 2) return false;
+      if(state.shared==='cek' && d.ipBersamaOk !== null)  return false;
+      if(state.shared==='dup' && d.ipBersamaOk !== false) return false;
+    }
     if(!q) return true;
     return [d.nama,d.ip,d.cluster,d.zona,d.brand,d.kategori,d.seri,d.serial,d.mac,d.resolusi]
       .filter(Boolean).join(' ').toLowerCase().includes(q);
@@ -938,7 +1014,7 @@ function renderStats(){
   const segs = new Set(f.map(d=>segOf(d.ip)).filter(s=>s!=='—')).size;
   $('#stats').innerHTML = [['Total device',f.length,'text-white'],['Online',c('Online'),'text-on'],
     ['Offline',c('Offline'),'text-off'],['Maintenance',c('Maintenance'),'text-maint'],
-    ['IP dipakai bersama', new Set(f.filter(d=>sameIp(d)>1).map(d=>d.ip)).size, 'text-maint']]
+    ['IP bersama belum dicek', new Set(f.filter(d=>sameIp(d)>1 && d.ipBersamaOk===null).map(d=>d.ip)).size, 'text-maint']]
     .map(([l,v,cl])=>`<div class="bg-ink-700 border border-line rounded px-3 py-2 grid-bg"><div class="text-[11px] text-slate-500">${l}</div><div class="text-2xl font-bold font-mono ${cl}">${v}</div></div>`).join('');
 }
 function fillFilters(){
@@ -966,7 +1042,7 @@ function renderGrid(){
       </div>
       <div class="p-3">
         <h3 class="font-semibold text-white truncate">${esc(d.nama)}</h3>
-        <div class="font-mono text-xs mt-0.5">${ipLink(d)}${sameIp(d)>1?`<span class="flag-ip ml-1.5" title="IP ini dipakai ${sameIp(d)} view kamera">IP bersama · ${sameIp(d)}</span>`:''}</div>
+        <div class="font-mono text-xs mt-0.5">${ipLink(d)}${sameIp(d)>1?`<span class="ml-1.5">${flagIp(d)}</span>`:''}</div>
         <div class="text-xs text-slate-500 mt-1 truncate">${esc(d.brand||'—')} <span class="text-slate-700">|</span> ${esc(d.seri||d.kategori||'CCTV')}</div>
         <div class="text-xs text-slate-600 mt-0.5 truncate">${[d.tipeKamera,d.resolusi,d.lensa&&d.lensa+'mm'].filter(Boolean).map(esc).join(' · ')||'&nbsp;'}</div>
         <div class="flex gap-1.5 mt-3">
@@ -1029,7 +1105,7 @@ function renderList(){
     <tbody>${f.length?f.map(d=>{ const E = canEdit(); return `<tr class="border-t border-line hover:bg-ink-700/50">
       <td class="p-2">${thumb(d,'w-14 h-10 rounded')}</td>
       <td class="p-1.5 font-medium text-white">${E?inp(d,'nama'):esc(d.nama)}</td>
-      <td class="p-1.5 font-mono whitespace-nowrap">${E?inp(d,'ip','font-mono !w-32 inline-block')+'<span class="text-slate-600">:</span>'+inp(d,'portHttp','font-mono !w-14 inline-block')+' '+ipIconLink(d):ipLink(d)}${sameIp(d)>1?` <span class="flag-ip">${sameIp(d)}×</span>`:''}</td>
+      <td class="p-1.5 font-mono whitespace-nowrap">${E?inp(d,'ip','font-mono !w-32 inline-block')+'<span class="text-slate-600">:</span>'+inp(d,'portHttp','font-mono !w-14 inline-block')+' '+ipIconLink(d):ipLink(d)} ${flagIp(d)}</td>
       <td class="p-1.5">${E?inp(d,'cluster'):esc(d.cluster)}</td><td class="p-1.5">${E?inp(d,'zona'):esc(d.zona)}</td>
       <td class="p-1.5 text-slate-400">${E?inp(d,'brand'):esc(d.brand)}</td>
       <td class="p-1.5 font-mono text-xs text-slate-300">${E?inp(d,'seri','font-mono'):esc(d.seri||'—')}</td>
@@ -1104,7 +1180,7 @@ function renderIpdb(){
       <td class="p-1.5 text-white">${E?inp(d,'nama'):esc(d.nama)}</td>
       <td class="p-1.5">${E?inp(d,'cluster'):esc(d.cluster)}</td><td class="p-1.5">${E?inp(d,'zona'):esc(d.zona)}</td>
       <td class="p-1.5 text-slate-400">${E?sel(d,'kategori',['CCTV','NVR','Switch','Access Point','Access Control','Server','Lainnya']):esc(d.kategori||'CCTV')}</td>
-      <td class="p-2.5">${sameIp(d)>1?`<span class="flag-ip" title="${devices.filter(x=>x.ip===d.ip).map(x=>esc(x.nama)).join(', ')}">${sameIp(d)} view</span>`:'<span class="text-slate-600 text-xs">—</span>'}</td>
+      <td class="p-2.5">${sameIp(d)>1?flagIp(d):'<span class="text-slate-600 text-xs">—</span>'}</td>
       <td class="p-1.5">${E?sel(d,'ipStatus',['Used','Reserved']):`<span class="text-xs px-2 py-0.5 rounded-full border ${d.ipStatus==='Reserved'?'border-maint text-maint':'border-on/50 text-on'}">${esc(d.ipStatus||'Used')}</span>`}</td>
       <td class="p-1.5">${E?sel(d,'status',STATUS):statusPill(d.status)}</td>
       <td class="p-1.5 text-right whitespace-nowrap col-aksi">
@@ -1142,6 +1218,8 @@ function render(){
   $('#tab-check').hidden   = state.tab!=='check';
   $('#viewSwitch').style.visibility = state.tab==='monitor'?'visible':'hidden';
   $$('.tab-btn').forEach(b=>b.className=`tab-btn px-3 py-1.5 rounded text-sm font-semibold flex items-center gap-2 ${b.dataset.tab===state.tab?'bg-cyan2 text-ink-900':'text-slate-400 hover:text-white'}`);
+  const labelIP = { semua:'IP bersama · semua', cek:'IP bersama · belum dicek', dup:'IP bersama · duplikat' };
+  $('#fShared').innerHTML = `<i data-lucide="link-2" class="w-3.5 h-3.5"></i> ${state.shared?labelIP[state.shared]:'IP bersama'}`;
   $('#fShared').className = `px-2.5 py-1.5 text-sm rounded border flex items-center gap-1.5 ${state.shared?'bg-maint/15 border-maint text-maint font-semibold':'border-line text-slate-400 hover:text-cyan2 hover:border-cyan2'}`;
   $$('.view-btn').forEach(b=>b.className=`view-btn px-2.5 py-1.5 rounded text-sm flex items-center gap-1.5 ${b.dataset.view===state.view?'bg-cyan2 text-ink-900 font-bold':'text-slate-400 hover:text-white'}`);
   if(state.tab==='monitor'){
@@ -1278,7 +1356,7 @@ function renderCheck(){
       <th class="p-2.5 text-left">Catatan</th></tr></thead>
     <tbody>${f.length ? f.map(d=>`<tr class="border-t border-line">
       <td class="p-2 font-medium text-white">${esc(d.nama)}</td>
-      <td class="p-2 font-mono whitespace-nowrap">${ipLink(d)}${sameIp(d)>1?` <span class="flag-ip">${sameIp(d)}×</span>`:''}</td>
+      <td class="p-2 font-mono whitespace-nowrap">${ipLink(d)} ${flagIp(d)}</td>
       <td class="p-2 text-slate-400">${esc(d.cluster)} · ${esc(d.zona)}</td>
       <td class="p-2">
         <div class="flex gap-1 justify-center">
@@ -1506,6 +1584,26 @@ const sameIp = d => devices.filter(x=>x.ip===d.ip).length;
 const ipUrl  = d => `http://${d.ip}:${d.portHttp||80}`;
 const ipLink = d => `<a href="${esc(ipUrl(d))}" target="_blank" rel="noopener noreferrer" class="ip-link"
   title="Buka ${esc(ipUrl(d))} di tab baru">${esc(d.ip)}<span class="text-slate-600">:${esc(d.portHttp||80)}</span><i data-lucide="external-link" class="w-3 h-3 inline-block align-[-1px] ml-1 opacity-60"></i></a>`;
+/* Penanda IP bersama bisa diverifikasi. Klik untuk berganti:
+   belum dicek → sah (memang beberapa view) → duplikat → belum dicek.
+   Keputusan berlaku untuk SEMUA baris yang memakai IP tersebut. */
+const STATUS_IP = {
+  'null':  { kelas:'fi-cek', teks:'perlu dicek', judul:'Belum diperiksa. Klik untuk menandai sah atau duplikat.' },
+  'true':  { kelas:'fi-sah', teks:'view',        judul:'Sudah diperiksa: memang beberapa view pada satu perangkat.' },
+  'false': { kelas:'fi-dup', teks:'duplikat',    judul:'Ditandai duplikat / salah catat — perlu dibereskan.' }
+};
+function flagIp(d){
+  const n = sameIp(d);
+  if(n < 2) return '';
+  const st = STATUS_IP[String(d.ipBersamaOk)] || STATUS_IP['null'];
+  const oleh = d.ipBersamaOleh ? ` · ditandai oleh ${d.ipBersamaOleh}` : '';
+  const nama = devices.filter(x=>x.ip===d.ip).map(x=>x.nama).join(', ');
+  const bisa = canEdit();
+  const tag = bisa ? 'button' : 'span';
+  return `<${tag} ${bisa?`type="button" data-flagip="${d.id}"`:''} class="flag-ip ${st.kelas}"
+    title="${esc(st.judul)}${esc(oleh)} — ${n} baris: ${esc(nama)}">${n}× ${st.teks}</${tag}>`;
+}
+
 const ipIconLink = d => `<a href="${esc(ipUrl(d))}" target="_blank" rel="noopener noreferrer"
   class="inline-flex items-center px-1.5 py-1 rounded-lg border border-line hover:border-cyan2 hover:text-cyan2 align-middle"
   title="Buka ${esc(ipUrl(d))} di tab baru"><i data-lucide="external-link" class="w-3.5 h-3.5"></i></a>`;
@@ -1528,7 +1626,7 @@ function openDetail(id){
                  : `<div class="w-full h-40 rounded border border-dashed border-line grid place-items-center text-slate-600 text-xs">belum ada foto view</div>`}
         <div class="mt-3 space-y-1 text-sm">
           <div class="font-mono">${ipLink(d)}</div>
-          ${sameIp(d)>1?`<div class="text-xs text-maint">IP ini dipakai bersama ${sameIp(d)} view: ${devices.filter(x=>x.ip===d.ip).map(x=>esc(x.nama)).join(', ')}</div>`:''}
+          ${sameIp(d)>1?`<div class="text-xs mt-1.5">${flagIp(d)}<div class="text-slate-500 mt-1">Dipakai bersama: ${devices.filter(x=>x.ip===d.ip).map(x=>esc(x.nama)).join(', ')}</div></div>`:''}
           <div class="font-mono text-xs text-slate-500">rtsp://${esc(d.ip)}:${esc(d.portRtsp||554)}</div>
           <div class="text-slate-400">${esc(d.cluster)} &middot; ${esc(d.zona)}</div>
           <div class="font-mono text-xs text-slate-500">${esc(d.lat||'—')}, ${esc(d.lng||'—')}</div>
@@ -1581,6 +1679,9 @@ function openForm(id, prefillIp){
   SPEC.forEach(([k])=>{ $('#f_'+k.toLowerCase()).value = d?.[k] ?? ''; });
   $('#f_catatan').value = d?.catatan || '';
   $('#seriList').innerHTML = uniq('seri').map(v=>`<option>${esc(v)}</option>`).join('');
+  $('#f_katalog').value = '';
+  $('#btnSimpanSpek').hidden = !canEdit();
+  $('#btnKelolaSpek').hidden = !canEdit();
   pendingFoto = d?.foto || null; paintFoto(); $('#f_foto').value='';
   $('#modal').hidden = false; lucide.createIcons();
   setTimeout(()=>$('#f_nama').focus(),30);
@@ -1743,6 +1844,95 @@ async function importCsv(text){
   catch(err){ toast('Impor gagal: '+(err.message||err),'err'); }
 }
 
+/* ============================ KATALOG SPESIFIKASI ============================ */
+/* Satu baris katalog = satu model perangkat. Field yang diisi hanya yang sama
+   untuk semua unit model itu; serial/MAC/firmware tetap per unit. */
+let katalog = [];
+const SPEK_KATALOG = [['brand','Brand'],['seri','Seri / model'],['tipeKamera','Bentuk kamera'],
+  ['resolusi','Resolusi'],['lensa','Lensa (mm)'],['ir','Jangkauan IR (m)'],['fitur','Fitur'],['daya','Sumber daya']];
+const dariBaris = r => ({ id:r.id, label:r.label, brand:r.brand||'', seri:r.seri||'', tipeKamera:r.tipe_kamera||r.tipeKamera||'',
+  resolusi:r.resolusi||'', lensa:r.lensa_mm||r.lensa||'', ir:r.ir_m||r.ir||'', fitur:r.fitur||'',
+  daya:r.daya||'', kategori:r.kategori||'CCTV', catatan:r.catatan||'', dipakai:r.dipakai||0 });
+
+async function muatKatalog(){
+  try{ katalog = (await api.listSpek()).map(dariBaris); }
+  catch(err){ katalog = []; console.error('katalog', err); }
+  isiDropdownKatalog();
+}
+function isiDropdownKatalog(){
+  const el = $('#f_katalog'); if(!el) return;
+  el.innerHTML = `<option value="">— pilih model, sisanya terisi sendiri —</option>` +
+    katalog.map(k=>`<option value="${esc(k.id)}">${esc(k.label)}</option>`).join('') +
+    (katalog.length ? '' : '<option disabled>(katalog masih kosong)</option>');
+}
+/* terapkan model ke form */
+$('#f_katalog').addEventListener('change', async e=>{
+  const k = katalog.find(x=>x.id===e.target.value); if(!k) return;
+  SPEK_KATALOG.forEach(([f])=>{ const el = $('#f_'+f.toLowerCase()); if(el && k[f]) el.value = k[f]; });
+  if(k.kategori) $('#f_kategori').value = k.kategori;
+  api.hitungPakaiSpek(k);
+  toast(`Spesifikasi "${k.label}" diterapkan. Serial, MAC, dan firmware tetap diisi manual.`);
+});
+
+/* simpan isian form sekarang menjadi model baru */
+$('#btnSimpanSpek').addEventListener('click', async ()=>{
+  if(!canEdit()){ toast('Peran Anda tidak boleh mengubah katalog.','err'); return; }
+  const usul = [$('#f_brand').value.trim(), $('#f_seri').value.trim()].filter(Boolean).join(' ')
+            || $('#f_nama').value.trim();
+  const label = prompt('Nama model untuk katalog ini:', usul);
+  if(!label) return;
+  const sp = { label: label.trim(), kategori: $('#f_kategori').value };
+  SPEK_KATALOG.forEach(([f])=>{ sp[f] = $('#f_'+f.toLowerCase()).value.trim(); });
+  try{ await api.saveSpek(sp); await muatKatalog(); toast(`Model "${sp.label}" masuk katalog.`); }
+  catch(err){ toast('Gagal menyimpan: '+(err.message||err),'err'); }
+});
+
+$('#btnKelolaSpek').addEventListener('click', ()=>bukaKatalog());
+$('#btnKatalog').addEventListener('click', ()=>bukaKatalog());
+$('#katalogClose').addEventListener('click', ()=>$('#katalog').hidden = true);
+$('#katalog').addEventListener('click', e=>{ if(e.target.id==='katalog') $('#katalog').hidden = true; });
+
+function bukaKatalog(){
+  $('#katalog').hidden = false;
+  const E = canEdit();
+  $('#katalogBody').innerHTML = `
+    <p class="text-xs text-slate-500 mb-3 leading-relaxed">Satu baris = satu model perangkat. Saat menambah device, pilih modelnya di form dan seluruh field spesifikasi terisi sendiri. Sel di bawah bisa diubah langsung.</p>
+    <div class="overflow-x-auto border border-line rounded">
+      <table class="w-full text-xs min-w-[900px]">
+        <thead class="bg-ink-700 text-slate-400"><tr>
+          <th class="p-2 text-left">Nama model</th><th class="p-2 text-left">Brand</th><th class="p-2 text-left">Seri</th>
+          <th class="p-2 text-left">Bentuk</th><th class="p-2 text-left">Resolusi</th><th class="p-2 text-left">Lensa</th>
+          <th class="p-2 text-left">IR</th><th class="p-2 text-left">Fitur</th><th class="p-2 text-left">Daya</th>
+          <th class="p-2 text-right">Dipakai</th>${E?'<th class="p-2"></th>':''}</tr></thead>
+        <tbody>${katalog.length ? katalog.map(k=>`<tr class="border-t border-line">
+          ${['label','brand','seri','tipeKamera','resolusi','lensa','ir','fitur','daya']
+            .map(f=>`<td class="p-1">${E?`<input class="cell-edit" data-spek="${k.id}" data-sfield="${f}" value="${esc(k[f]||'')}">`:esc(k[f]||'—')}</td>`).join('')}
+          <td class="p-2 text-right font-mono text-slate-500">${k.dipakai||0}×</td>
+          ${E?`<td class="p-1 text-right"><button data-hapusspek="${k.id}" class="px-2 py-1 rounded border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button></td>`:''}
+        </tr>`).join('') : `<tr><td colspan="11" class="p-6 text-center text-slate-500">Katalog masih kosong. Isi form spesifikasi sebuah device lalu tekan "Simpan sebagai model baru".</td></tr>`}
+        </tbody></table>
+    </div>`;
+  lucide.createIcons();
+}
+
+/* edit langsung di tabel katalog */
+document.addEventListener('change', async e=>{
+  const el = e.target.closest('[data-spek]'); if(!el) return;
+  const k = katalog.find(x=>x.id===el.dataset.spek); if(!k) return;
+  const f = el.dataset.sfield, lama = k[f];
+  k[f] = el.value.trim();
+  try{ await api.saveSpek(k); el.classList.add('tersimpan'); setTimeout(()=>el.classList.remove('tersimpan'),1000); isiDropdownKatalog(); }
+  catch(err){ k[f] = lama; el.value = lama||''; toast('Gagal menyimpan: '+(err.message||err),'err'); }
+});
+document.addEventListener('click', async e=>{
+  const b = e.target.closest('[data-hapusspek]'); if(!b) return;
+  const k = katalog.find(x=>x.id===b.dataset.hapusspek); if(!k) return;
+  if(!isAdmin()){ toast('Hanya Administrator yang boleh menghapus model.','err'); return; }
+  if(!confirm(`Hapus model "${k.label}" dari katalog? Device yang sudah memakainya tidak terpengaruh.`)) return;
+  try{ await api.hapusSpek(k.id); await muatKatalog(); bukaKatalog(); toast('Model dihapus dari katalog.'); }
+  catch(err){ toast('Gagal menghapus: '+(err.message||err),'err'); }
+});
+
 /* ============================ IMPOR DARI PETA PANDANG ============================ */
 /* File "Peta Pandang CCTV" menyimpan datanya di <script id="data" type="application/json">.
    Setiap entri: {nama, kategori, area, x(lng), y(lat), lokasi, img(base64 JPEG tanpa awalan)}. */
@@ -1901,6 +2091,28 @@ $('#petaClose').addEventListener('click', ()=>$('#peta').hidden = true);
 $('#peta').addEventListener('click', e=>{ if(e.target.id==='peta') $('#peta').hidden = true; });
 
 /* ============================ EVENTS ============================ */
+/* ubah status penanda IP bersama — berlaku untuk semua baris dengan IP yang sama */
+document.addEventListener('click', async e=>{
+  const b = e.target.closest('[data-flagip]'); if(!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const d = devices.find(x=>x.id===b.dataset.flagip); if(!d) return;
+  if(!canEdit()){ toast('Peran Anda tidak boleh mengubah data.','err'); return; }
+  const berikut = { 'null': true, 'true': false, 'false': null }[String(d.ipBersamaOk)];
+  const kelompok = devices.filter(x=>x.ip===d.ip);
+  const oleh = berikut===null ? null : (session?.email||'').split('@')[0];
+  try{
+    for(const x of kelompok){
+      await api.patch(x.id, { ip_bersama_ok: berikut, ip_bersama_oleh: oleh,
+                              ip_bersama_pada: berikut===null ? null : new Date().toISOString() });
+      x.ipBersamaOk = berikut; x.ipBersamaOleh = oleh || '';
+    }
+    render();
+    toast(berikut===true  ? `IP ${d.ip} ditandai sah — ${kelompok.length} view pada satu perangkat.`
+        : berikut===false ? `IP ${d.ip} ditandai duplikat — ${kelompok.length} baris perlu dibereskan.`
+        : `Status IP ${d.ip} dikembalikan ke belum diperiksa.`, berikut===false?'warn':'ok');
+  }catch(err){ toast('Gagal menyimpan: '+(err.message||err),'err'); }
+});
+
 /* tombol kembalikan lebar kolom */
 document.addEventListener('click', e=>{
   const r = e.target.closest('[data-resetlebar]');
@@ -1937,7 +2149,11 @@ $('#fCluster').addEventListener('change',e=>{ state.cluster=e.target.value; rend
 $('#fZona').addEventListener('change',   e=>{ state.zona=e.target.value; render(); });
 $('#fBrand').addEventListener('change',  e=>{ state.brand=e.target.value; render(); });
 $('#fStatus').addEventListener('change', e=>{ state.status=e.target.value; render(); });
-$('#fShared').addEventListener('click', ()=>{ state.shared=!state.shared; render(); });
+/* siklus filter: mati → semua IP bersama → hanya yang belum dicek → hanya duplikat */
+$('#fShared').addEventListener('click', ()=>{
+  state.shared = !state.shared ? 'semua' : state.shared==='semua' ? 'cek' : state.shared==='cek' ? 'dup' : false;
+  render();
+});
 $('#fReset').addEventListener('click', ()=>{ state.q=state.cluster=state.zona=state.brand=state.status=''; state.shared=false; $('#search').value=''; render(); });
 $('#btnScan').addEventListener('click', ()=>scanFree($('#segInput').value));
 $('#segInput').addEventListener('keydown', e=>{ if(e.key==='Enter') scanFree($('#segInput').value); });
