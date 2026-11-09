@@ -23,7 +23,7 @@
 ===================================================================== */
 const SUPABASE_URL      = "https://pvsjvvovqcvvcpiozxzt.supabase.co";   // contoh: "https://abcdefgh.supabase.co"
 const SUPABASE_ANON_KEY = "sb_publishable_YMsD51FNdhadl7B7mIfJJw_5-IbDL0U";   // anon / publishable key (bukan service_role)
-   
+
 /* Pendaftaran mandiri. false = hanya Administrator yang membuat akun, lewat
    Supabase Dashboard > Authentication > Users > Add user (centang auto confirm).
    Akun baru masuk sebagai "Menunggu persetujuan" dan diberi peran lewat
@@ -136,6 +136,16 @@ article{ transition:transform .16s ease, box-shadow .16s ease, border-color .16s
 .cell-edit:focus{ outline:none; border-color:rgb(var(--c-accent)); background:rgb(var(--c-raised)) }
 .cell-edit.tersimpan{ animation:simpan 1s ease }
 @keyframes simpan{ 0%{ background:rgb(var(--c-on)/.25) } 100%{ background:transparent } }
+
+/* ---------- legenda cakupan ---------- */
+.kotak{ display:inline-block; width:12px; height:9px; border-radius:2px; background:rgb(var(--c-on)); border:1px solid rgb(var(--c-on)) }
+
+/* ---------- pegangan pengatur arah pandang ---------- */
+.pegangan{ width:22px; height:22px; border-radius:50%; background:#f59e0b; border:3px solid #fff;
+  box-shadow:0 2px 8px rgba(0,0,0,.5); cursor:grab }
+.pegangan:active{ cursor:grabbing }
+.corong{ pointer-events:none }
+#panelArah input[type=range]{ margin-top:.4rem }
 
 /* ---------- status penanda IP bersama ---------- */
 button.flag-ip{ cursor:pointer }
@@ -361,8 +371,48 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
   <section id="tab-monitor">
     <div id="viewGrid" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"></div>
     <div id="viewList" hidden class="overflow-x-auto border border-line rounded bg-ink-800"></div>
-    <div id="viewMap"  hidden class="border border-line rounded overflow-hidden">
+    <div id="viewMap"  hidden class="border border-line rounded overflow-hidden relative">
       <div id="map" class="w-full" style="height:min(72vh,720px)"></div>
+
+      <div class="absolute right-3 top-3 z-[600] flex flex-col gap-2 items-end">
+        <button id="btnProfilMassal" class="px-3 py-2 rounded-lg bg-ink-800/95 backdrop-blur border border-line text-xs font-semibold hover:border-cyan2 flex items-center gap-1.5">
+          <i data-lucide="layers-2" class="w-3.5 h-3.5 text-cyan2"></i> Terapkan profil cakupan
+        </button>
+        <div class="bg-ink-800/95 backdrop-blur border border-line rounded-lg px-3 py-2 text-[11px] leading-relaxed">
+          <div class="font-semibold mb-1">Lapis cakupan (DORI)</div>
+          <div class="flex items-center gap-1.5"><span class="kotak" style="opacity:.40"></span> Identify — layak jadi bukti</div>
+          <div class="flex items-center gap-1.5"><span class="kotak" style="opacity:.26"></span> Recognize — kenal orangnya</div>
+          <div class="flex items-center gap-1.5"><span class="kotak" style="opacity:.16"></span> Observe — tahu itu orang</div>
+          <div class="flex items-center gap-1.5"><span class="kotak" style="opacity:.09"></span> Detect — hanya ada gerakan</div>
+        </div>
+      </div>
+
+      <div id="panelArah" hidden class="absolute left-1/2 -translate-x-1/2 bottom-4 z-[600] w-[min(560px,94%)]
+           bg-ink-800/95 backdrop-blur border border-line rounded-lg shadow-2xl p-4">
+        <div class="flex items-center gap-2 mb-3">
+          <i data-lucide="cone" class="w-4 h-4 text-cyan2"></i>
+          <span class="font-bold text-white" id="arahNama">—</span>
+          <span class="text-xs text-slate-500">tarik pegangan oranye di peta untuk memutar &amp; memanjangkan</span>
+        </div>
+        <div class="grid sm:grid-cols-3 gap-3">
+          <label class="text-sm">Arah <span id="arahVal" class="font-mono text-cyan2">0°</span>
+            <input id="arahSlider" type="range" min="0" max="359" step="1" class="w-full accent-current">
+          </label>
+          <label class="text-sm">Sudut pandang <span id="fovVal" class="font-mono text-cyan2">75°</span>
+            <input id="fovSlider" type="range" min="10" max="360" step="5" class="w-full">
+          </label>
+          <label class="text-sm">Jangkauan <span id="jauhVal" class="font-mono text-cyan2">35 m</span>
+            <input id="jauhSlider" type="range" min="5" max="250" step="5" class="w-full">
+          </label>
+        </div>
+        <div class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-line items-center">
+          <span class="text-xs text-slate-500" id="arahMata">—</span>
+          <span class="text-xs" id="arahDori"></span>
+          <button id="arahHapus" class="ml-auto px-3 py-1.5 rounded-lg border border-line text-sm hover:border-off hover:text-off">Hapus arah</button>
+          <button id="arahBatal" class="px-3 py-1.5 rounded-lg border border-line text-sm">Batal</button>
+          <button id="arahSimpan" class="px-3 py-1.5 rounded-lg bg-cyan2 text-ink-900 font-bold text-sm">Simpan arah</button>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -521,6 +571,25 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
           <label class="text-sm">Garansi sampai
             <input id="f_garansi" type="date" class="inp">
           </label>
+          <label class="text-sm">Arah hadap (derajat)
+            <input id="f_arah" type="number" min="0" max="359" placeholder="0 = utara, 90 = timur" class="inp font-mono">
+          </label>
+          <label class="text-sm">Sudut pandang (derajat)
+            <input id="f_fov" type="number" min="10" max="360" placeholder="75" class="inp font-mono">
+          </label>
+          <label class="text-sm">Jangkauan corong (m)
+            <input id="f_jangkauan" type="number" min="5" max="250" placeholder="35" class="inp font-mono">
+          </label>
+          <div class="text-sm md:col-span-3">
+            <span>Cakupan DORI menurut datasheet (meter)</span>
+            <div class="grid grid-cols-4 gap-2 mt-1.5">
+              <input id="f_dorid" type="number" step="0.1" placeholder="Detect" class="inp font-mono !mt-0" title="Detect — tahu ada gerakan">
+              <input id="f_dorio" type="number" step="0.1" placeholder="Observe" class="inp font-mono !mt-0" title="Observe — tahu itu orang">
+              <input id="f_dorir" type="number" step="0.1" placeholder="Recognize" class="inp font-mono !mt-0" title="Recognize — kenal orangnya">
+              <input id="f_dorii" type="number" step="0.1" placeholder="Identify" class="inp font-mono !mt-0" title="Identify — cukup untuk bukti">
+            </div>
+            <p class="text-xs text-slate-500 mt-1">Terisi sendiri saat memilih model dari katalog. Peta menggambarnya sebagai empat lapis corong.</p>
+          </div>
           <label class="text-sm md:col-span-3">Catatan teknisi
             <textarea id="f_catatan" rows="2" placeholder="Sudut pandang menghadap gerbang keluar; kabel lewat tray utara." class="inp"></textarea>
           </label>
@@ -660,7 +729,12 @@ const fromRow = r => ({ id:r.id, nama:r.nama, ip:r.ip, portHttp:r.port_http, por
   ir:r.ir_m||'', fitur:r.fitur||'', serial:r.serial_number||'', mac:r.mac||'', firmware:r.firmware||'',
   daya:r.daya||'', tglPasang:r.tgl_pasang||'', garansi:r.garansi_sampai||'', catatan:r.catatan||'',
   ipBersamaOk: (r.ip_bersama_ok === null || r.ip_bersama_ok === undefined) ? null : !!r.ip_bersama_ok,
-  ipBersamaOleh: r.ip_bersama_oleh||'' });
+  ipBersamaOleh: r.ip_bersama_oleh||'',
+  arah: (r.arah_derajat===null||r.arah_derajat===undefined) ? null : +r.arah_derajat,
+  fov: r.fov_derajat ? +r.fov_derajat : 75,
+  jangkauan: r.jangkauan_m ? +r.jangkauan_m : 35,
+  doriD: r.dori_d ? +r.dori_d : null, doriO: r.dori_o ? +r.dori_o : null,
+  doriR: r.dori_r ? +r.dori_r : null, doriI: r.dori_i ? +r.dori_i : null });
 const toRow = d => ({ id:d.id, nama:d.nama, ip:d.ip, port_http:d.portHttp, port_rtsp:d.portRtsp,
   brand:d.brand, kategori:d.kategori, cluster:d.cluster, zona:d.zona, status:d.status,
   ip_status:d.ipStatus, lat:d.lat===''?null:+d.lat, lng:d.lng===''?null:+d.lng, foto:d.foto,
@@ -669,7 +743,11 @@ const toRow = d => ({ id:d.id, nama:d.nama, ip:d.ip, port_http:d.portHttp, port_
   firmware:d.firmware||null, daya:d.daya||null, tgl_pasang:d.tglPasang||null,
   garansi_sampai:d.garansi||null, catatan:d.catatan||null,
   ip_bersama_ok: (d.ipBersamaOk === null || d.ipBersamaOk === undefined) ? null : !!d.ipBersamaOk,
-  ip_bersama_oleh: d.ipBersamaOleh||null });
+  ip_bersama_oleh: d.ipBersamaOleh||null,
+  arah_derajat: (d.arah===null||d.arah===undefined||d.arah==='') ? null : +d.arah,
+  fov_derajat: d.fov ? +d.fov : 75,
+  jangkauan_m: d.jangkauan ? +d.jangkauan : 35,
+  dori_d: d.doriD || null, dori_o: d.doriO || null, dori_r: d.doriR || null, dori_i: d.doriI || null });
 
 const BUCKET = 'cctv-foto';
 
@@ -724,7 +802,9 @@ const api = {
     }
     const baris = { label:sp.label, brand:sp.brand||null, seri:sp.seri||null, tipe_kamera:sp.tipeKamera||null,
       resolusi:sp.resolusi||null, lensa_mm:sp.lensa||null, ir_m:sp.ir||null, fitur:sp.fitur||null,
-      daya:sp.daya||null, kategori:sp.kategori||'CCTV', catatan:sp.catatan||null };
+      daya:sp.daya||null, kategori:sp.kategori||'CCTV', catatan:sp.catatan||null,
+      fov_derajat: sp.fov ? +sp.fov : null,
+      dori_d: sp.doriD||null, dori_o: sp.doriO||null, dori_r: sp.doriR||null, dori_i: sp.doriI||null };
     if(sp.id) baris.id = sp.id;
     const { error } = await sb.from('spek_katalog').upsert(baris, { onConflict:'label' });
     if(error) throw error;
@@ -1014,7 +1094,7 @@ function renderStats(){
   const segs = new Set(f.map(d=>segOf(d.ip)).filter(s=>s!=='—')).size;
   $('#stats').innerHTML = [['Total device',f.length,'text-white'],['Online',c('Online'),'text-on'],
     ['Offline',c('Offline'),'text-off'],['Maintenance',c('Maintenance'),'text-maint'],
-    ['IP bersama belum dicek', new Set(f.filter(d=>sameIp(d)>1 && d.ipBersamaOk===null).map(d=>d.ip)).size, 'text-maint']]
+    ['Arah belum diatur', f.filter(d=>d.lat && d.lng && (d.arah===null||d.arah===undefined)).length, 'text-maint']]
     .map(([l,v,cl])=>`<div class="bg-ink-700 border border-line rounded px-3 py-2 grid-bg"><div class="text-[11px] text-slate-500">${l}</div><div class="text-2xl font-bold font-mono ${cl}">${v}</div></div>`).join('');
 }
 function fillFilters(){
@@ -1127,6 +1207,62 @@ function renderList(){
     </p>`);
   pasangPenarik('#viewList', 'list');
 }
+/* ===================== CORONG ARAH PANDANG =====================
+   Satu derajat lintang ≈ 111.320 m; bujur menyusut mengikuti cos(lintang). */
+const DEG_LAT = 111320;
+function geser(lat, lng, meter, derajat){
+  const r = derajat * Math.PI/180;
+  return [ lat + (meter*Math.cos(r))/DEG_LAT,
+           lng + (meter*Math.sin(r))/(DEG_LAT*Math.cos(lat*Math.PI/180)) ];
+}
+function arahAntara(a, b){           // sudut dari titik a ke titik b, 0 = utara
+  const dy = (b[0]-a[0])*DEG_LAT;
+  const dx = (b[1]-a[1])*DEG_LAT*Math.cos(a[0]*Math.PI/180);
+  return { derajat: (Math.atan2(dx,dy)*180/Math.PI + 360) % 360,
+           meter: Math.hypot(dx,dy) };
+}
+function titikCorong(d, arah = d.arah, fov = d.fov, jauh = d.jangkauan){
+  const lat = +d.lat, lng = +d.lng;
+  fov = Math.min(360, Math.max(5, fov || 75));
+  jauh = Math.max(5, jauh || 35);
+  if(fov >= 355){                      // lingkaran penuh untuk PTZ / fisheye
+    const t = []; for(let a=0;a<360;a+=10) t.push(geser(lat,lng,jauh,a));
+    return t;
+  }
+  const t = [[lat,lng]];
+  const mulai = (arah||0) - fov/2, langkah = fov/14;
+  for(let i=0;i<=14;i++) t.push(geser(lat,lng,jauh,mulai + i*langkah));
+  t.push([lat,lng]);
+  return t;
+}
+const WARNA = { on:'#10d9a3', off:'#ff4d5e', maint:'#ffb020' };
+
+/* Empat lapis DORI (IEC 62676-4), dari terluar ke terdalam.
+   Lapis luar sengaja pucat: Detect hanya berarti "ada gerakan", bukan cakupan. */
+const LAPIS = [
+  { k:'doriD', nama:'Detect',    isi:.08, garis:.25 },
+  { k:'doriO', nama:'Observe',   isi:.14, garis:.35 },
+  { k:'doriR', nama:'Recognize', isi:.22, garis:.45 },
+  { k:'doriI', nama:'Identify',  isi:.40, garis:.70 }
+];
+const punyaDori = d => !!(d.doriD || d.doriO || d.doriR || d.doriI);
+
+function gambarCorong(d, layer){
+  const w = WARNA[tone(d.status)];
+  if(!punyaDori(d)){
+    L.polygon(titikCorong(d), { color:w, weight:1, opacity:.75, fillColor:w,
+      fillOpacity:.22, interactive:false, className:'corong' }).addTo(layer);
+    return;
+  }
+  LAPIS.forEach(({k, nama, isi, garis})=>{
+    const jauh = d[k]; if(!jauh) return;
+    L.polygon(titikCorong(d, d.arah, d.fov, jauh), {
+      color:w, weight:1, opacity:garis, fillColor:w, fillOpacity:isi,
+      interactive:false, className:'corong'
+    }).addTo(layer).bindTooltip(`${esc(d.nama)} — ${nama} ${jauh} m`);
+  });
+}
+
 function initMap(){
   if(map) return;
   map = L.map('map').setView([-6.2235,106.6080],14);
@@ -1137,6 +1273,8 @@ function renderMap(){
   initMap(); markerLayer.clearLayers();
   const pts = [];
   filtered().filter(d=>d.lat!=='' && d.lng!=='' && Number.isFinite(+d.lat) && Number.isFinite(+d.lng)).forEach(d=>{
+    /* corong arah pandang, hanya untuk kamera yang arahnya sudah diatur */
+    if(d.arah !== null && d.arah !== undefined && d.arah !== '') gambarCorong(d, markerLayer);
     const icon = L.divIcon({className:'',iconSize:[18,18],iconAnchor:[9,9],html:`<div class="pin pin-${tone(d.status)}"></div>`});
     L.marker([+d.lat,+d.lng],{icon}).bindPopup(`<div style="min-width:210px">
       ${d.foto?`<img src="${esc(d.foto)}" alt="" style="width:100%;height:110px;object-fit:cover;border-radius:6px;margin-bottom:8px">`:''}
@@ -1146,6 +1284,7 @@ function renderMap(){
       <div style="font-size:11px;color:#64748b">${[d.brand,d.seri,d.resolusi].filter(Boolean).map(esc).join(' · ')}</div>
       <div style="margin-top:6px">${statusPill(d.status)}</div>
       <button data-act="detail" data-id="${d.id}" style="margin-top:8px;width:100%;padding:5px;border-radius:5px;background:#1d2832;border:1px solid #223040;color:#d7e3ee;font-size:12px;cursor:pointer">Lihat detail &amp; spek</button>
+      ${canEdit()?`<button data-aturarah="${d.id}" style="margin-top:6px;width:100%;padding:5px;border-radius:5px;background:#2563eb;border:0;color:#fff;font-size:12px;font-weight:700;cursor:pointer">${d.arah!==null&&d.arah!==undefined&&d.arah!==''?'Ubah arah pandang':'Atur arah pandang'}</button>`:''}
     </div>`).addTo(markerLayer);
     pts.push([+d.lat,+d.lng]);
   });
@@ -1229,6 +1368,7 @@ function render(){
     terapkanKolom();
     if(state.view==='grid') renderGrid();
     if(state.view==='list') renderList();
+    if(state.view!=='map' && atur) selesaiAturArah(false);
     if(state.view==='map')  renderMap();
   } else if(state.tab==='ipdb') renderIpdb();
   else if(state.tab==='check') renderCheck();
@@ -1626,7 +1766,8 @@ function openDetail(id){
                  : `<div class="w-full h-40 rounded border border-dashed border-line grid place-items-center text-slate-600 text-xs">belum ada foto view</div>`}
         <div class="mt-3 space-y-1 text-sm">
           <div class="font-mono">${ipLink(d)}</div>
-          ${sameIp(d)>1?`<div class="text-xs mt-1.5">${flagIp(d)}<div class="text-slate-500 mt-1">Dipakai bersama: ${devices.filter(x=>x.ip===d.ip).map(x=>esc(x.nama)).join(', ')}</div></div>`:''}
+          ${punyaDori(d)?`<div class="text-xs mt-1.5 text-slate-400">Cakupan: D ${d.doriD||'—'} · O ${d.doriO||'—'} · R ${d.doriR||'—'} · <span class="text-on">I ${d.doriI||'—'}</span> m${d.arah!==null&&d.arah!==undefined?` · menghadap ${namaArah(d.arah)} ${Math.round(d.arah)}°`:''}</div>`:''}
+        ${sameIp(d)>1?`<div class="text-xs mt-1.5">${flagIp(d)}<div class="text-slate-500 mt-1">Dipakai bersama: ${devices.filter(x=>x.ip===d.ip).map(x=>esc(x.nama)).join(', ')}</div></div>`:''}
           <div class="font-mono text-xs text-slate-500">rtsp://${esc(d.ip)}:${esc(d.portRtsp||554)}</div>
           <div class="text-slate-400">${esc(d.cluster)} &middot; ${esc(d.zona)}</div>
           <div class="font-mono text-xs text-slate-500">${esc(d.lat||'—')}, ${esc(d.lng||'—')}</div>
@@ -1677,6 +1818,11 @@ function openForm(id, prefillIp){
   $('#f_lat').value = d?.lat ?? '';
   $('#f_lng').value = d?.lng ?? '';
   SPEC.forEach(([k])=>{ $('#f_'+k.toLowerCase()).value = d?.[k] ?? ''; });
+  $('#f_arah').value = (d?.arah ?? '');
+  $('#f_fov').value = d?.fov ?? 75;
+  $('#f_jangkauan').value = d?.jangkauan ?? 35;
+  $('#f_dorid').value = d?.doriD ?? ''; $('#f_dorio').value = d?.doriO ?? '';
+  $('#f_dorir').value = d?.doriR ?? ''; $('#f_dorii').value = d?.doriI ?? '';
   $('#f_catatan').value = d?.catatan || '';
   $('#seriList').innerHTML = uniq('seri').map(v=>`<option>${esc(v)}</option>`).join('');
   $('#f_katalog').value = '';
@@ -1755,7 +1901,12 @@ $('#form').addEventListener('submit', async e=>{
     cluster:$('#f_cluster').value.trim()||'Tanpa cluster', zona:$('#f_zona').value.trim()||'Tanpa zona',
     status:$('#f_status').value, ipStatus:$('#f_ipstatus').value,
     lat:$('#f_lat').value.trim(), lng:$('#f_lng').value.trim(), foto:pendingFoto,
-    catatan:$('#f_catatan').value.trim() };
+    catatan:$('#f_catatan').value.trim(),
+    arah: $('#f_arah').value==='' ? null : +$('#f_arah').value,
+    fov: +$('#f_fov').value || 75,
+    jangkauan: +$('#f_jangkauan').value || 35,
+    doriD: +$('#f_dorid').value || null, doriO: +$('#f_dorio').value || null,
+    doriR: +$('#f_dorir').value || null, doriI: +$('#f_dorii').value || null };
   SPEC.forEach(([k])=>{ rec[k] = $('#f_'+k.toLowerCase()).value.trim(); });
   try{ await api.upsert(rec); closeForm(); await reload(); toast(id?'Perubahan tersimpan.':'Device ditambahkan.'); }
   catch(err){ toast('Gagal menyimpan: '+(err.message||err),'err'); }
@@ -1844,6 +1995,144 @@ async function importCsv(text){
   catch(err){ toast('Impor gagal: '+(err.message||err),'err'); }
 }
 
+/* ============================ PENGATUR ARAH PANDANG ============================ */
+/* Satu kamera diatur pada satu waktu: pegangan oranye ditarik untuk memutar
+   dan memanjangkan corong; slider untuk penyetelan halus. */
+let atur = null;           // { d, arah, fov, jauh, corong, pegangan }
+const MATA_ANGIN = ['Utara','Timur laut','Timur','Tenggara','Selatan','Barat daya','Barat','Barat laut'];
+const namaArah = a => MATA_ANGIN[Math.round(((a%360)+360)%360 / 45) % 8];
+
+function mulaiAturArah(id){
+  const d = devices.find(x=>x.id===id); if(!d) return;
+  if(!canEdit()){ toast('Peran Anda tidak boleh mengubah data.','err'); return; }
+  if(!(Number.isFinite(+d.lat) && Number.isFinite(+d.lng) && d.lat!=='' && d.lng!=='')){
+    toast('Device ini belum punya koordinat, jadi arahnya belum bisa diatur.','err'); return; }
+  selesaiAturArah(false);
+  map.closePopup();
+
+  atur = { d, arah: (d.arah ?? 0), fov: (d.fov || 75), jauh: (d.jangkauan || 35) };
+  const pos = [+d.lat, +d.lng];
+  atur.lapis = [];
+  atur.corong = L.polygon(titikCorong(d, atur.arah, atur.fov, atur.jauh),
+    { color:'#f59e0b', weight:2, fillColor:'#f59e0b', fillOpacity:.22, interactive:false }).addTo(map);
+  if(punyaDori(d)) LAPIS.forEach(({k, isi})=>{
+    if(!d[k]) return;
+    atur.lapis.push({ k, poly: L.polygon(titikCorong(d, atur.arah, atur.fov, d[k]),
+      { color:'#f59e0b', weight:1, opacity:.5, fillColor:'#f59e0b', fillOpacity:isi, interactive:false }).addTo(map) });
+  });
+  atur.pegangan = L.marker(geser(pos[0], pos[1], atur.jauh, atur.arah), {
+    draggable:true, zIndexOffset:1000,
+    icon: L.divIcon({ className:'', iconSize:[22,22], iconAnchor:[11,11], html:'<div class="pegangan"></div>' })
+  }).addTo(map);
+
+  atur.pegangan.on('drag', e=>{
+    const t = arahAntara(pos, [e.latlng.lat, e.latlng.lng]);
+    atur.arah = Math.round(t.derajat);
+    atur.jauh = Math.min(250, Math.max(5, Math.round(t.meter/5)*5));
+    gambarUlangAtur(false);
+  });
+
+  $('#arahNama').textContent = d.nama;
+  $('#panelArah').hidden = false;
+  gambarUlangAtur(true);
+  map.panTo(pos);
+  lucide.createIcons();
+}
+
+function gambarUlangAtur(isiSlider){
+  if(!atur) return;
+  const { d } = atur, pos = [+d.lat, +d.lng];
+  atur.corong.setLatLngs(titikCorong(d, atur.arah, atur.fov, atur.jauh));
+  (atur.lapis||[]).forEach(({k, poly})=>poly.setLatLngs(titikCorong(d, atur.arah, atur.fov, d[k])));
+  atur.pegangan.setLatLng(geser(pos[0], pos[1], atur.jauh, atur.arah));
+  $('#arahVal').textContent = Math.round(atur.arah) + '°';
+  $('#fovVal').textContent  = Math.round(atur.fov) + '°';
+  $('#jauhVal').textContent = Math.round(atur.jauh) + ' m';
+  $('#arahMata').textContent = `Menghadap ${namaArah(atur.arah)} · ${Math.round(atur.arah)}° · corong ${Math.round(atur.fov)}° sejauh ${Math.round(atur.jauh)} m`;
+  $('#arahDori').innerHTML = punyaDori(d)
+    ? `<span class="text-slate-500">Cakupan: </span>D ${d.doriD||'—'} m · O ${d.doriO||'—'} m · R ${d.doriR||'—'} m · <span class="text-on">I ${d.doriI||'—'} m</span>`
+    : '<span class="text-maint">Profil cakupan belum diisi — pilih model di form device.</span>';
+  if(isiSlider !== false){
+    $('#arahSlider').value = Math.round(atur.arah);
+    $('#fovSlider').value  = Math.round(atur.fov);
+    $('#jauhSlider').value = Math.round(atur.jauh);
+  }else{
+    $('#arahSlider').value = Math.round(atur.arah);
+    $('#jauhSlider').value = Math.round(atur.jauh);
+  }
+}
+function selesaiAturArah(gambarPeta = true){
+  if(!atur) return;
+  map.removeLayer(atur.corong); map.removeLayer(atur.pegangan);
+  (atur.lapis||[]).forEach(({poly})=>map.removeLayer(poly));
+  atur = null;
+  $('#panelArah').hidden = true;
+  if(gambarPeta) renderMap();
+}
+
+['arahSlider','fovSlider','jauhSlider'].forEach(id=>{
+  $('#'+id).addEventListener('input', e=>{
+    if(!atur) return;
+    if(id==='arahSlider') atur.arah = +e.target.value;
+    if(id==='fovSlider')  atur.fov  = +e.target.value;
+    if(id==='jauhSlider') atur.jauh = +e.target.value;
+    gambarUlangAtur(false);
+  });
+});
+/* Terapkan satu model katalog ke semua device yang sedang difilter.
+   Hanya mengisi FOV dan DORI; arah hadap tetap per kamera. */
+$('#btnProfilMassal').addEventListener('click', async ()=>{
+  if(!canEdit()){ toast('Peran Anda tidak boleh mengubah data.','err'); return; }
+  const dgnDori = katalog.filter(k=>k.doriD);
+  if(!dgnDori.length){ toast('Belum ada model berprofil DORI di katalog. Jalankan dulu supabase-cakupan-dori.sql.','err'); return; }
+  const f = filtered();
+  const daftar = dgnDori.map((k,i)=>`${i+1}. ${k.label}`).join('\n');
+  const pilih = prompt(`Terapkan profil cakupan ke ${f.length} device yang sedang tampil.\n\n${daftar}\n\nKetik nomornya:`, '2');
+  const k = dgnDori[(+pilih||0)-1];
+  if(!k) return;
+  const timpa = confirm(`Timpa juga device yang profil cakupannya sudah terisi?\n\nOK = timpa semua\nBatal = hanya isi yang masih kosong`);
+  let ubah = 0;
+  for(const d of f){
+    if(!timpa && punyaDori(d)) continue;
+    try{
+      await api.patch(d.id, { fov_derajat:k.fov, jangkauan_m:k.doriD,
+        dori_d:k.doriD, dori_o:k.doriO, dori_r:k.doriR, dori_i:k.doriI });
+      Object.assign(d, { fov:k.fov, jangkauan:k.doriD, doriD:k.doriD, doriO:k.doriO, doriR:k.doriR, doriI:k.doriI });
+      ubah++;
+    }catch(err){ console.error(d.nama, err); }
+  }
+  render();
+  toast(`Profil "${k.label}" diterapkan ke ${ubah} device.`);
+});
+
+$('#arahBatal').addEventListener('click', ()=>selesaiAturArah());
+$('#arahSimpan').addEventListener('click', async ()=>{
+  if(!atur) return;
+  const { d } = atur;
+  try{
+    await api.patch(d.id, { arah_derajat: Math.round(atur.arah), fov_derajat: Math.round(atur.fov), jangkauan_m: Math.round(atur.jauh) });
+    d.arah = Math.round(atur.arah); d.fov = Math.round(atur.fov); d.jangkauan = Math.round(atur.jauh);
+    toast(`Arah ${d.nama} disimpan: ${namaArah(d.arah)} ${d.arah}°.`);
+    selesaiAturArah();
+  }catch(err){ toast('Gagal menyimpan: '+(err.message||err),'err'); }
+});
+$('#arahHapus').addEventListener('click', async ()=>{
+  if(!atur) return;
+  const { d } = atur;
+  if(!confirm(`Hapus arah pandang ${d.nama}? Corongnya tidak akan digambar lagi.`)) return;
+  try{
+    await api.patch(d.id, { arah_derajat: null });
+    d.arah = null;
+    toast('Arah pandang dihapus.','warn');
+    selesaiAturArah();
+  }catch(err){ toast('Gagal menghapus: '+(err.message||err),'err'); }
+});
+document.addEventListener('click', e=>{
+  const b = e.target.closest('[data-aturarah]');
+  if(b){ e.preventDefault(); mulaiAturArah(b.dataset.aturarah); }
+});
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && atur) selesaiAturArah(); });
+
 /* ============================ KATALOG SPESIFIKASI ============================ */
 /* Satu baris katalog = satu model perangkat. Field yang diisi hanya yang sama
    untuk semua unit model itu; serial/MAC/firmware tetap per unit. */
@@ -1852,7 +2141,8 @@ const SPEK_KATALOG = [['brand','Brand'],['seri','Seri / model'],['tipeKamera','B
   ['resolusi','Resolusi'],['lensa','Lensa (mm)'],['ir','Jangkauan IR (m)'],['fitur','Fitur'],['daya','Sumber daya']];
 const dariBaris = r => ({ id:r.id, label:r.label, brand:r.brand||'', seri:r.seri||'', tipeKamera:r.tipe_kamera||r.tipeKamera||'',
   resolusi:r.resolusi||'', lensa:r.lensa_mm||r.lensa||'', ir:r.ir_m||r.ir||'', fitur:r.fitur||'',
-  daya:r.daya||'', kategori:r.kategori||'CCTV', catatan:r.catatan||'', dipakai:r.dipakai||0 });
+  daya:r.daya||'', kategori:r.kategori||'CCTV', catatan:r.catatan||'', fov:r.fov_derajat||null,
+  doriD:r.dori_d||null, doriO:r.dori_o||null, doriR:r.dori_r||null, doriI:r.dori_i||null, dipakai:r.dipakai||0 });
 
 async function muatKatalog(){
   try{ katalog = (await api.listSpek()).map(dariBaris); }
@@ -1870,6 +2160,11 @@ $('#f_katalog').addEventListener('change', async e=>{
   const k = katalog.find(x=>x.id===e.target.value); if(!k) return;
   SPEK_KATALOG.forEach(([f])=>{ const el = $('#f_'+f.toLowerCase()); if(el && k[f]) el.value = k[f]; });
   if(k.kategori) $('#f_kategori').value = k.kategori;
+  if(k.fov) $('#f_fov').value = k.fov;
+  if(k.doriD){ $('#f_dorid').value = k.doriD; $('#f_jangkauan').value = Math.round(k.doriD); }
+  if(k.doriO) $('#f_dorio').value = k.doriO;
+  if(k.doriR) $('#f_dorir').value = k.doriR;
+  if(k.doriI) $('#f_dorii').value = k.doriI;
   api.hitungPakaiSpek(k);
   toast(`Spesifikasi "${k.label}" diterapkan. Serial, MAC, dan firmware tetap diisi manual.`);
 });
@@ -1881,7 +2176,9 @@ $('#btnSimpanSpek').addEventListener('click', async ()=>{
             || $('#f_nama').value.trim();
   const label = prompt('Nama model untuk katalog ini:', usul);
   if(!label) return;
-  const sp = { label: label.trim(), kategori: $('#f_kategori').value };
+  const sp = { label: label.trim(), kategori: $('#f_kategori').value, fov: +$('#f_fov').value || null,
+    doriD:+$('#f_dorid').value||null, doriO:+$('#f_dorio').value||null,
+    doriR:+$('#f_dorir').value||null, doriI:+$('#f_dorii').value||null };
   SPEK_KATALOG.forEach(([f])=>{ sp[f] = $('#f_'+f.toLowerCase()).value.trim(); });
   try{ await api.saveSpek(sp); await muatKatalog(); toast(`Model "${sp.label}" masuk katalog.`); }
   catch(err){ toast('Gagal menyimpan: '+(err.message||err),'err'); }
