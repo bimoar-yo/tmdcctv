@@ -137,6 +137,10 @@ article{ transition:transform .16s ease, box-shadow .16s ease, border-color .16s
 .cell-edit.tersimpan{ animation:simpan 1s ease }
 @keyframes simpan{ 0%{ background:rgb(var(--c-on)/.25) } 100%{ background:transparent } }
 
+/* ---------- marker saat mode pindah titik ---------- */
+.pin-geser{ cursor:grab; box-shadow:0 0 0 4px rgba(245,158,11,.45), 0 0 0 9px rgba(245,158,11,.16) !important }
+.pin-geser:active{ cursor:grabbing }
+
 /* ---------- legenda cakupan ---------- */
 .kotak{ display:inline-block; width:12px; height:9px; border-radius:2px; background:rgb(var(--c-on)); border:1px solid rgb(var(--c-on)) }
 
@@ -375,6 +379,15 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
       <div id="map" class="w-full" style="height:min(72vh,720px)"></div>
 
       <div class="absolute right-3 top-3 z-[600] flex flex-col gap-2 items-end">
+        <button id="btnUndo" hidden class="px-3 py-2 rounded-lg bg-maint text-ink-900 border border-maint text-xs font-bold flex items-center gap-1.5">
+          <i data-lucide="undo-2" class="w-3.5 h-3.5"></i> Undo pemindahan
+        </button>
+        <button id="btnPaskan" class="px-3 py-2 rounded-lg bg-ink-800/95 backdrop-blur border border-line text-xs font-semibold hover:border-cyan2 flex items-center gap-1.5">
+          <i data-lucide="maximize" class="w-3.5 h-3.5 text-cyan2"></i> Paskan tampilan
+        </button>
+        <button id="btnPindah" class="px-3 py-2 rounded-lg bg-ink-800/95 backdrop-blur border border-line text-xs font-semibold hover:border-cyan2 flex items-center gap-1.5">
+          <i data-lucide="move" class="w-3.5 h-3.5 text-cyan2"></i> Mode pindah titik
+        </button>
         <button id="btnProfilMassal" class="px-3 py-2 rounded-lg bg-ink-800/95 backdrop-blur border border-line text-xs font-semibold hover:border-cyan2 flex items-center gap-1.5">
           <i data-lucide="layers-2" class="w-3.5 h-3.5 text-cyan2"></i> Terapkan profil cakupan
         </button>
@@ -1068,6 +1081,12 @@ let state = { tab:'monitor', view:'grid', q:'', cluster:'', zona:'', brand:'', s
 let ck = { items:{}, catatan:{} };   // hasil checklist yang sedang diisi: {deviceId: 'hidup'|'mati'|'maintenance'}
 let ckRiwayat = null;
 let map, markerLayer, pendingFoto = null;
+let pasSekali = false, titikTerakhir = [], modePindah = false;
+/* Tumpukan posisi sebelum dipindah, untuk tombol Undo.
+   Hanya di memori: menutup tab berarti riwayat undo hilang, tapi koordinat
+   lama tetap tercatat permanen di tab Riwayat. */
+let riwayatPindah = [];
+const MAKS_UNDO = 25;
 
 function filtered(){
   const q = state.q.trim().toLowerCase();
@@ -1162,6 +1181,11 @@ async function simpanSel(el){
     const kolom = {};
     kolom[KOLOM[k] || k] = (k==='lat'||k==='lng') ? (v===''?null:+v) : v;
     await api.patch(d.id, kolom);
+    if(k==='lat' || k==='lng'){
+      riwayatPindah.push({ id:d.id, nama:d.nama, lat: k==='lat'?lama:d.lat, lng: k==='lng'?lama:d.lng });
+      if(riwayatPindah.length > MAKS_UNDO) riwayatPindah.shift();
+      setTombolUndo();
+    }
     el.classList.add('tersimpan'); setTimeout(()=>el.classList.remove('tersimpan'), 1000);
     renderStats();
   }catch(err){ d[k] = lama; el.value = lama ?? ''; toast('Gagal menyimpan: '+(err.message||err),'err'); }
@@ -1275,8 +1299,29 @@ function renderMap(){
   filtered().filter(d=>d.lat!=='' && d.lng!=='' && Number.isFinite(+d.lat) && Number.isFinite(+d.lng)).forEach(d=>{
     /* corong arah pandang, hanya untuk kamera yang arahnya sudah diatur */
     if(d.arah !== null && d.arah !== undefined && d.arah !== '') gambarCorong(d, markerLayer);
-    const icon = L.divIcon({className:'',iconSize:[18,18],iconAnchor:[9,9],html:`<div class="pin pin-${tone(d.status)}"></div>`});
-    L.marker([+d.lat,+d.lng],{icon}).bindPopup(`<div style="min-width:210px">
+    const icon = L.divIcon({className:'',iconSize:[18,18],iconAnchor:[9,9],
+      html:`<div class="pin pin-${tone(d.status)} ${modePindah?'pin-geser':''}"></div>`});
+    const mk = L.marker([+d.lat,+d.lng],{ icon, draggable: modePindah && canEdit() });
+    if(modePindah && canEdit()){
+      mk.on('dragend', async ev=>{
+        const ll = ev.target.getLatLng();
+        const lat = ll.lat.toFixed(7), lng = ll.lng.toFixed(7);
+        const lama = { id:d.id, nama:d.nama, lat:d.lat, lng:d.lng };
+        try{
+          await api.patch(d.id, { lat:+lat, lng:+lng });
+          d.lat = lat; d.lng = lng;
+          riwayatPindah.push(lama);
+          if(riwayatPindah.length > MAKS_UNDO) riwayatPindah.shift();
+          setTombolUndo();
+          toast(`${d.nama} dipindah. Tekan Undo atau Ctrl+Z kalau keliru.`);
+          renderMap();
+        }catch(err){
+          ev.target.setLatLng([+d.lat, +d.lng]);
+          toast('Gagal menyimpan posisi: '+(err.message||err),'err');
+        }
+      });
+    }
+    mk.bindPopup(`<div style="min-width:210px">
       ${d.foto?`<img src="${esc(d.foto)}" alt="" style="width:100%;height:110px;object-fit:cover;border-radius:6px;margin-bottom:8px">`:''}
       <div style="font-weight:700;color:#fff">${esc(d.nama)}</div>
       <div style="font-family:monospace;font-size:12px"><a href="${esc(ipUrl(d))}" target="_blank" rel="noopener noreferrer" style="color:#3b82f6;text-decoration:underline">${esc(d.ip)}:${esc(d.portHttp)}</a></div>
@@ -1285,10 +1330,18 @@ function renderMap(){
       <div style="margin-top:6px">${statusPill(d.status)}</div>
       <button data-act="detail" data-id="${d.id}" style="margin-top:8px;width:100%;padding:5px;border-radius:5px;background:#1d2832;border:1px solid #223040;color:#d7e3ee;font-size:12px;cursor:pointer">Lihat detail &amp; spek</button>
       ${canEdit()?`<button data-aturarah="${d.id}" style="margin-top:6px;width:100%;padding:5px;border-radius:5px;background:#2563eb;border:0;color:#fff;font-size:12px;font-weight:700;cursor:pointer">${d.arah!==null&&d.arah!==undefined&&d.arah!==''?'Ubah arah pandang':'Atur arah pandang'}</button>`:''}
+      ${canEdit()?`<button data-pindahtitik="${d.id}" style="margin-top:6px;width:100%;padding:5px;border-radius:5px;background:#1d2832;border:1px solid #223040;color:#d7e3ee;font-size:12px;cursor:pointer">Pindahkan titik ini</button>`:''}
     </div>`).addTo(markerLayer);
     pts.push([+d.lat,+d.lng]);
   });
-  setTimeout(()=>{ map.invalidateSize(); if(pts.length) map.fitBounds(L.latLngBounds(pts).pad(.25),{maxZoom:17}); },60);
+  titikTerakhir = pts;
+  setTimeout(()=>{
+    map.invalidateSize();
+    /* Tampilan hanya dipaskan sekali saat peta pertama dibuka, atau saat
+       tombol "Paskan tampilan" ditekan. Menyimpan arah, memindahkan titik,
+       atau mengubah filter tidak lagi melempar peta kembali ke zoom awal. */
+    if(!pasSekali && pts.length){ map.fitBounds(L.latLngBounds(pts).pad(.25),{maxZoom:17}); pasSekali = true; }
+  },60);
 }
 function renderIpdb(){
   const f = filtered(), segs = {};
@@ -1369,6 +1422,8 @@ function render(){
     if(state.view==='grid') renderGrid();
     if(state.view==='list') renderList();
     if(state.view!=='map' && atur) selesaiAturArah(false);
+    if(state.view!=='map' && modePindah){ modePindah = false; setTombolPindah(); }
+    if(state.view==='map') setTombolUndo();
     if(state.view==='map')  renderMap();
   } else if(state.tab==='ipdb') renderIpdb();
   else if(state.tab==='check') renderCheck();
@@ -2105,6 +2160,81 @@ $('#btnProfilMassal').addEventListener('click', async ()=>{
   toast(`Profil "${k.label}" diterapkan ke ${ubah} device.`);
 });
 
+/* ---- Undo pemindahan titik ---- */
+function setTombolUndo(){
+  const b = $('#btnUndo'); if(!b) return;
+  b.hidden = riwayatPindah.length === 0;
+  if(riwayatPindah.length){
+    const t = riwayatPindah[riwayatPindah.length-1];
+    b.innerHTML = `<i data-lucide="undo-2" class="w-3.5 h-3.5"></i> Undo: ${esc(t.nama)}${riwayatPindah.length>1?` (${riwayatPindah.length})`:''}`;
+    b.title = `Kembalikan ${t.nama} ke ${t.lat||'tanpa koordinat'}, ${t.lng||''}`;
+    lucide.createIcons();
+  }
+}
+async function undoPindah(){
+  const t = riwayatPindah.pop();
+  if(!t){ toast('Tidak ada pemindahan untuk dibatalkan.','warn'); return; }
+  const d = devices.find(x=>x.id===t.id);
+  if(!d){ setTombolUndo(); return; }
+  const sekarang = { lat:d.lat, lng:d.lng };
+  try{
+    await api.patch(d.id, { lat: t.lat===''?null:+t.lat, lng: t.lng===''?null:+t.lng });
+    d.lat = t.lat; d.lng = t.lng;
+    setTombolUndo();
+    renderMap();
+    toast(`${d.nama} dikembalikan ke ${t.lat}, ${t.lng}.`);
+  }catch(err){
+    riwayatPindah.push({ ...t });              // kembalikan ke tumpukan kalau gagal
+    d.lat = sekarang.lat; d.lng = sekarang.lng;
+    setTombolUndo();
+    toast('Gagal membatalkan: '+(err.message||err),'err');
+  }
+}
+$('#btnUndo').addEventListener('click', undoPindah);
+document.addEventListener('keydown', e=>{
+  if((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==='z'
+     && state.tab==='monitor' && state.view==='map'
+     && !e.target.closest('input, textarea, select')){
+    e.preventDefault(); undoPindah();
+  }
+});
+
+/* paskan tampilan ke seluruh titik yang sedang tampil */
+$('#btnPaskan').addEventListener('click', ()=>{
+  if(!map || !titikTerakhir.length){ toast('Belum ada titik berkoordinat untuk dipaskan.','warn'); return; }
+  map.fitBounds(L.latLngBounds(titikTerakhir).pad(.25), { maxZoom:17 });
+});
+
+/* mode pindah titik: marker jadi bisa diseret, koordinat tersimpan saat dilepas */
+function setTombolPindah(){
+  const b = $('#btnPindah'); if(!b) return;
+  b.className = `px-3 py-2 rounded-lg backdrop-blur border text-xs font-semibold flex items-center gap-1.5 ${
+    modePindah ? 'bg-maint text-ink-900 border-maint' : 'bg-ink-800/95 border-line hover:border-cyan2'}`;
+  b.innerHTML = `<i data-lucide="move" class="w-3.5 h-3.5 ${modePindah?'':'text-cyan2'}"></i> ${modePindah?'Selesai pindah titik':'Mode pindah titik'}`;
+  lucide.createIcons();
+}
+$('#btnPindah').addEventListener('click', ()=>{
+  if(!canEdit()){ toast('Peran Anda tidak boleh mengubah data.','err'); return; }
+  modePindah = !modePindah;
+  if(modePindah && atur) selesaiAturArah(false);
+  setTombolPindah();
+  renderMap();
+  toast(modePindah
+    ? 'Mode pindah titik aktif — seret marker ke posisi yang benar, koordinat tersimpan otomatis.'
+    : 'Mode pindah titik dimatikan.', modePindah?'warn':'ok');
+});
+
+/* tombol "Pindahkan titik ini" di dalam popup */
+document.addEventListener('click', e=>{
+  const b = e.target.closest('[data-pindahtitik]'); if(!b) return;
+  e.preventDefault();
+  const d = devices.find(x=>x.id===b.dataset.pindahtitik); if(!d) return;
+  if(!modePindah){ modePindah = true; setTombolPindah(); renderMap(); }
+  map.closePopup();
+  map.setView([+d.lat, +d.lng], Math.max(map.getZoom(), 18));
+  toast(`Seret marker ${d.nama} ke posisi yang benar.`,'warn');
+});
+
 $('#arahBatal').addEventListener('click', ()=>selesaiAturArah());
 $('#arahSimpan').addEventListener('click', async ()=>{
   if(!atur) return;
@@ -2113,7 +2243,9 @@ $('#arahSimpan').addEventListener('click', async ()=>{
     await api.patch(d.id, { arah_derajat: Math.round(atur.arah), fov_derajat: Math.round(atur.fov), jangkauan_m: Math.round(atur.jauh) });
     d.arah = Math.round(atur.arah); d.fov = Math.round(atur.fov); d.jangkauan = Math.round(atur.jauh);
     toast(`Arah ${d.nama} disimpan: ${namaArah(d.arah)} ${d.arah}°.`);
+    const posisi = map.getCenter(), zum = map.getZoom();
     selesaiAturArah();
+    map.setView(posisi, zum, { animate:false });
   }catch(err){ toast('Gagal menyimpan: '+(err.message||err),'err'); }
 });
 $('#arahHapus').addEventListener('click', async ()=>{
