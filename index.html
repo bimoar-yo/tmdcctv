@@ -330,6 +330,7 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
             <div id="modeLabel" class="mt-0.5"></div>
           </div>
           <button id="btnImport" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="upload" class="w-4 h-4 text-cyan2"></i> Impor CSV</button>
+          <button id="btnThumb" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="image-minus" class="w-4 h-4 text-cyan2"></i> Buat thumbnail foto lama</button>
           <button id="btnKatalog" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="book-marked" class="w-4 h-4 text-cyan2"></i> Katalog spesifikasi</button>
           <button id="btnPeta" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="map-pinned" class="w-4 h-4 text-cyan2"></i> Impor dari Peta Pandang</button>
           <button id="btnTemplate" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="file-down" class="w-4 h-4 text-cyan2"></i> Unduh template CSV</button>
@@ -460,8 +461,13 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
 
       <div class="mt-4 pt-3 border-t border-line">
         <div class="flex flex-wrap items-center gap-2">
+          <div class="flex gap-1 bg-ink-700 p-1 rounded-xl border border-line mr-1" id="aksiTes">
+            <button data-aksi="ping" class="aksi-btn px-2.5 py-1.5 rounded-lg text-sm font-semibold">Tes ping</button>
+            <button data-aksi="view" class="aksi-btn px-2.5 py-1.5 rounded-lg text-sm font-semibold">Tes view</button>
+            <button data-aksi="dua"  class="aksi-btn px-2.5 py-1.5 rounded-lg text-sm font-semibold">Keduanya</button>
+          </div>
           <button id="btnTesSemua" class="px-3 py-2 rounded-xl bg-cyan2 text-ink-900 text-sm font-bold flex items-center gap-1.5">
-            <i data-lucide="activity" class="w-4 h-4"></i> Tes semua IP yang tampil
+            <i data-lucide="activity" class="w-4 h-4"></i> Jalankan ke semua yang tampil
           </button>
           <button id="btnTesPilih" class="px-3 py-2 rounded-xl border border-line text-sm hover:border-cyan2 flex items-center gap-1.5">
             <i data-lucide="list-checks" class="w-4 h-4"></i> Tes yang dicentang (<span id="jmlPilih">0</span>)
@@ -472,6 +478,13 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
           <label class="flex items-center gap-1.5 text-sm">Batas tunggu
             <input id="timeoutMs" type="number" min="500" max="15000" step="250" value="3000" class="w-24 bg-ink-700 border border-line rounded-lg px-2 py-1 text-sm font-mono"> ms</label>
         </div>
+        <div id="barisView" hidden class="flex flex-wrap items-center gap-2 mt-2">
+          <label class="text-sm flex-1 min-w-[320px]">Pola alamat snapshot
+            <input id="polaSnapshot" value="/ISAPI/Streaming/channels/101/picture" class="inp font-mono !mt-1">
+          </label>
+          <span class="text-xs text-slate-500 self-end pb-2">Hikvision: /ISAPI/… · Dahua: /cgi-bin/snapshot.cgi?channel=1</span>
+        </div>
+        <div id="galeriView" class="hidden grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mt-3"></div>
         <div id="tesProgres" class="hidden mt-2">
           <div class="h-2 bg-ink-600 rounded overflow-hidden"><div id="tesBar" class="h-full bg-cyan2" style="width:0%"></div></div>
           <p id="tesStatus" class="text-xs text-slate-500 mt-1.5"></p>
@@ -479,7 +492,9 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
         <p class="text-xs text-slate-500 mt-2 leading-relaxed">
           Tes dijalankan dari browser ini ke <span class="font-mono">http://ip:port</span> — mengukur sambungan TCP/HTTP, <span class="text-maint">bukan ping ICMP</span>.
           Angkanya memuat handshake HTTP sehingga lebih besar daripada ping biasa; pakai untuk membandingkan antar-kamera, bukan sebagai angka mutlak.
-          Browser harus berada di jaringan yang sama dengan kamera. Untuk ICMP sungguhan dan penjadwalan harian otomatis, jalankan <span class="font-mono">agen-ping-cctv.py</span>.
+          Browser harus berada di jaringan yang sama dengan kamera. Untuk ICMP sungguhan dan penjadwalan harian otomatis, jalankan <span class="font-mono">agen-ping-cctv.py</span>.<br>
+          <span class="text-cyan2">Tes view</span> memuat gambar snapshot kamera langsung di halaman ini untuk diperiksa mata: ia membuktikan kamera benar-benar menghasilkan gambar, bukan sekadar menjawab jaringan.
+          Gambarnya <span class="text-on">tidak disimpan</span>, jadi tidak memakai kuota storage sama sekali. Kamera yang meminta login perlu dibuka sekali di tab lain lebih dulu agar browser menyimpan sesinya.
         </p>
       </div>
 
@@ -772,7 +787,8 @@ const fromRow = r => ({ id:r.id, nama:r.nama, ip:r.ip, portHttp:r.port_http, por
   fov: r.fov_derajat ? +r.fov_derajat : 75,
   jangkauan: r.jangkauan_m ? +r.jangkauan_m : 35,
   doriD: r.dori_d ? +r.dori_d : null, doriO: r.dori_o ? +r.dori_o : null,
-  doriR: r.dori_r ? +r.dori_r : null, doriI: r.dori_i ? +r.dori_i : null });
+  doriR: r.dori_r ? +r.dori_r : null, doriI: r.dori_i ? +r.dori_i : null,
+  fotoThumb: r.foto_thumb || null });
 const toRow = d => ({ id:d.id, nama:d.nama, ip:d.ip, port_http:d.portHttp, port_rtsp:d.portRtsp,
   brand:d.brand, kategori:d.kategori, cluster:d.cluster, zona:d.zona, status:d.status,
   ip_status:d.ipStatus, lat:d.lat===''?null:+d.lat, lng:d.lng===''?null:+d.lng, foto:d.foto,
@@ -785,19 +801,44 @@ const toRow = d => ({ id:d.id, nama:d.nama, ip:d.ip, port_http:d.portHttp, port_
   arah_derajat: (d.arah===null||d.arah===undefined||d.arah==='') ? null : +d.arah,
   fov_derajat: d.fov ? +d.fov : 75,
   jangkauan_m: d.jangkauan ? +d.jangkauan : 35,
-  dori_d: d.doriD || null, dori_o: d.doriO || null, dori_r: d.doriR || null, dori_i: d.doriI || null });
+  dori_d: d.doriD || null, dori_o: d.doriO || null, dori_r: d.doriR || null, dori_i: d.doriI || null,
+  foto_thumb: d.fotoThumb || null });
 
 const BUCKET = 'cctv-foto';
 
 /* Foto: di cloud diunggah sebagai file ke Storage, kolom `foto` hanya berisi URL.
    Di mode lokal tetap base64 karena tidak ada tempat lain. */
+/* Perkecil gambar di browser sebelum diunggah. */
+function kecilkan(dataUrl, lebar, mutu){
+  return new Promise((res, rej)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const sc = Math.min(1, lebar/img.width), cv = document.createElement('canvas');
+      cv.width = Math.round(img.width*sc); cv.height = Math.round(img.height*sc);
+      cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+      cv.toBlob(b=>b?res(b):rej(new Error('gagal mengecilkan')), 'image/jpeg', mutu);
+    };
+    img.onerror = ()=>rej(new Error('gambar tidak terbaca'));
+    img.src = dataUrl;
+  });
+}
+
+/* Dua ukuran: gambar penuh (720 px) untuk panel Detail, thumbnail 320 px
+   untuk Grid dan tabel. Grid memuat ratusan gambar sekaligus, jadi selisih
+   ukuran inilah yang menentukan pemakaian egress bulanan. */
 async function putFoto(d){
-  if(!CLOUD || !d.foto || !d.foto.startsWith('data:')) return d.foto;
-  const blob = await (await fetch(d.foto)).blob();
-  const path = `${d.id}.jpg`;
-  const { error } = await sb.storage.from(BUCKET).upload(path, blob, { upsert:true, contentType:'image/jpeg' });
-  if(error) throw error;
-  return sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl + '?v=' + Date.now();
+  if(!CLOUD || !d.foto || !d.foto.startsWith('data:')) return { foto:d.foto, thumb:d.fotoThumb };
+  const penuh = await (await fetch(d.foto)).blob();
+  const kecil = await kecilkan(d.foto, 320, .6);
+  const cap = Date.now();
+  const u1 = await sb.storage.from(BUCKET).upload(`${d.id}.jpg`, penuh, { upsert:true, contentType:'image/jpeg' });
+  if(u1.error) throw u1.error;
+  const u2 = await sb.storage.from(BUCKET).upload(`${d.id}_t.jpg`, kecil, { upsert:true, contentType:'image/jpeg' });
+  if(u2.error) throw u2.error;
+  return {
+    foto:  sb.storage.from(BUCKET).getPublicUrl(`${d.id}.jpg`).data.publicUrl + '?v=' + cap,
+    thumb: sb.storage.from(BUCKET).getPublicUrl(`${d.id}_t.jpg`).data.publicUrl + '?v=' + cap
+  };
 }
 
 const api = {
@@ -809,7 +850,8 @@ const api = {
   },
   async upsert(d){
     if(!CLOUD){ const i = devices.findIndex(x=>x.id===d.id); i>-1?devices[i]=d:devices.push(d); return saveLocal(); }
-    const rec = { ...d, foto: await putFoto(d) };
+    const g = await putFoto(d);
+    const rec = { ...d, foto: g.foto, fotoThumb: g.thumb };
     const row = toRow(rec);
     const lama = devices.some(x=>x.id===d.id);
     /* Baris yang sudah ada diubah lewat id-nya, supaya ganti nama / ganti IP
@@ -909,7 +951,7 @@ const api = {
     if(!CLOUD){ devices = devices.filter(d=>d.id!==id); return saveLocal(); }
     const { error } = await sb.from('devices').delete().eq('id', id);
     if(error) throw error;
-    try{ await sb.storage.from(BUCKET).remove([`${id}.jpg`]); }catch(e){}
+    try{ await sb.storage.from(BUCKET).remove([`${id}.jpg`, `${id}_t.jpg`]); }catch(e){}
   },
   async wipe(){
     if(!CLOUD){ devices=[]; return saveLocal(); }
@@ -917,7 +959,7 @@ const api = {
     if(!ids.length) return;
     const { error } = await sb.from('devices').delete().in('id', ids);
     if(error) throw error;
-    try{ await sb.storage.from(BUCKET).remove(ids.map(i=>`${i}.jpg`)); }catch(e){}
+    try{ await sb.storage.from(BUCKET).remove(ids.flatMap(i=>[`${i}.jpg`, `${i}_t.jpg`])); }catch(e){}
   },
   async logs(limit = 300){
     if(!CLOUD) return null;
@@ -1172,7 +1214,8 @@ function fillFilters(){
   $('#clusterList').innerHTML = uniq('cluster').map(v=>`<option>${esc(v)}</option>`).join('');
 }
 function thumb(d,cls){
-  return d.foto ? `<img src="${esc(d.foto)}" alt="View ${esc(d.nama)}" class="${cls} object-cover">`
+  const kecil = d.fotoThumb || d.foto;   // thumbnail dulu; gambar penuh hanya di panel Detail
+  return kecil ? `<img src="${esc(kecil)}" alt="View ${esc(d.nama)}" loading="lazy" decoding="async" class="${cls} object-cover">`
                 : `<div class="${cls} grid place-items-center bg-ink-700 text-slate-600"><i data-lucide="camera-off" class="w-5 h-5"></i></div>`;
 }
 const badge = t => `<span class="text-[11px] px-1.5 py-0.5 rounded bg-ink-600 border border-line text-slate-300">${esc(t)}</span>`;
@@ -1368,7 +1411,7 @@ function renderMap(){
       });
     }
     mk.bindPopup(`<div style="min-width:210px">
-      ${d.foto?`<img src="${esc(d.foto)}" alt="" style="width:100%;height:110px;object-fit:cover;border-radius:6px;margin-bottom:8px">`:''}
+      ${(d.fotoThumb||d.foto)?`<img src="${esc(d.fotoThumb||d.foto)}" alt="" loading="lazy" style="width:100%;height:110px;object-fit:cover;border-radius:6px;margin-bottom:8px">`:''}
       <div style="font-weight:700;color:#fff">${esc(d.nama)}</div>
       <div style="font-family:monospace;font-size:12px"><a href="${esc(ipUrl(d))}" target="_blank" rel="noopener noreferrer" style="color:#3b82f6;text-decoration:underline">${esc(d.ip)}:${esc(d.portHttp)}</a></div>
       <div style="font-size:12px;color:#94a3b8;margin-top:4px">${esc(d.cluster)} &middot; ${esc(d.zona)}</div>
@@ -1568,6 +1611,35 @@ $$('.col-btn').forEach(b=>b.addEventListener('click', ()=>{
 }));
 addEventListener('resize', ()=>{ if(state.tab==='monitor' && state.view==='grid') terapkanKolom(); });
 
+/* ============================ KONVERSI THUMBNAIL ============================ */
+/* Foto yang diunggah sebelum v23 hanya punya satu ukuran. Alat ini mengunduh
+   tiap foto sekali, membuat thumbnail 320 px, lalu mengunggahnya. Dijalankan
+   sekali saja; setelah itu Grid memuat gambar jauh lebih kecil. */
+$('#btnThumb').addEventListener('click', async ()=>{
+  if(!CLOUD){ toast('Alat ini hanya untuk mode Supabase.','warn'); return; }
+  if(!canEdit()){ toast('Peran Anda tidak boleh mengubah data.','err'); return; }
+  const perlu = devices.filter(d=>d.foto && !d.fotoThumb);
+  if(!perlu.length){ toast('Semua foto sudah punya thumbnail.'); return; }
+  if(!confirm(`${perlu.length} foto belum punya thumbnail.\n\nProses ini mengunduh tiap foto sekali lalu mengunggah versi kecilnya — sekali jalan saja.\n\nLanjutkan?`)) return;
+  let ok=0, gagal=0;
+  for(let i=0;i<perlu.length;i++){
+    const d = perlu[i];
+    $('#tesStatus') && ($('#tesStatus').textContent = `Thumbnail ${i+1}/${perlu.length} — ${d.nama}`);
+    try{
+      const blob = await (await fetch(d.foto, { cache:'no-store' })).blob();
+      const dataUrl = await new Promise(r=>{ const fr=new FileReader(); fr.onload=()=>r(fr.result); fr.readAsDataURL(blob); });
+      const kecil = await kecilkan(dataUrl, 320, .6);
+      const { error } = await sb.storage.from(BUCKET).upload(`${d.id}_t.jpg`, kecil, { upsert:true, contentType:'image/jpeg' });
+      if(error) throw error;
+      const url = sb.storage.from(BUCKET).getPublicUrl(`${d.id}_t.jpg`).data.publicUrl + '?v=' + Date.now();
+      await api.patch(d.id, { foto_thumb: url });
+      d.fotoThumb = url; ok++;
+    }catch(err){ gagal++; console.error(d.nama, err); }
+  }
+  render();
+  toast(`${ok} thumbnail dibuat${gagal?`, ${gagal} gagal`:''}.`, gagal?'warn':'ok');
+});
+
 /* ============================ TES KONEKTIVITAS IP ============================ */
 /* Browser tidak bisa mengirim paket ICMP — itu dilarang sandbox browser, bukan
    keterbatasan kode. Yang dilakukan di sini: membuka sambungan HTTP ke
@@ -1576,6 +1648,7 @@ addEventListener('resize', ()=>{ if(state.tab==='monitor' && state.view==='grid'
      gagal cepat (koneksi ditolak)         -> dianggap tidak terjangkau
      habis batas tunggu                    -> Offline
    Untuk ICMP sungguhan, pakai agen di luar browser. */
+let aksiTes = localStorage.getItem('cctvtmd_aksi') || 'ping';
 let pilihTes = new Set();
 let hasilTes = {};          // { deviceId: {status, ms} }
 let tesBerjalan = false, tesDihentikan = false;
@@ -1618,6 +1691,8 @@ async function jalankanTes(daftar){
   $('#btnTesSemua').disabled = $('#btnTesPilih').disabled = true;
 
   const mulai = Date.now();
+  if(aksiTes !== 'ping'){ $('#galeriView').innerHTML = ''; $('#galeriView').classList.remove('hidden'); }
+  else $('#galeriView').classList.add('hidden');
   let selesai = 0, online = 0, lambat = 0, mati = 0;
   const baris = [];
   const PARALEL = 10;                    // jangan membanjiri jaringan estate
@@ -1625,15 +1700,31 @@ async function jalankanTes(daftar){
   async function pekerja(antrean){
     while(antrean.length && !tesDihentikan){
       const d = antrean.shift();
-      const r = await tesSatu(d, batas);
-      const status = !r.hidup ? 'Offline' : (r.ms > ambang ? 'Maintenance' : 'Online');
-      hasilTes[d.id] = { status, ms: r.ms };
+      let status, ms, metode;
+
+      if(aksiTes === 'view'){
+        const v = await tesView(d, batas);
+        status = v.ok ? (v.ms > ambang ? 'Maintenance' : 'Online') : 'Offline';
+        ms = v.ms; metode = 'view';
+        if(v.ok) tambahGaleri(d, v);
+      }else{
+        const r = await tesSatu(d, batas);
+        status = !r.hidup ? 'Offline' : (r.ms > ambang ? 'Maintenance' : 'Online');
+        ms = r.ms; metode = 'browser';
+        /* "Keduanya": kalau jaringannya hidup, periksa gambarnya juga */
+        if(aksiTes === 'dua' && r.hidup){
+          const v = await tesView(d, batas);
+          if(v.ok) tambahGaleri(d, v);
+          else { status = 'Maintenance'; ck.catatan[d.id] = 'jaringan hidup tapi gambar tidak muncul'; }
+        }
+      }
+      hasilTes[d.id] = { status, ms };
       if(status==='Online') online++; else if(status==='Maintenance') lambat++; else mati++;
       /* hasil tes langsung mengisi checklist hari ini */
       ck.items[d.id] = status==='Online' ? 'hidup' : status==='Offline' ? 'mati' : 'maintenance';
       if(status==='Maintenance') ck.catatan[d.id] = `tanggap lambat ${Math.round(r.ms)} ms`;
       baris.push({ device_id: d.id, nama: d.nama, ip: d.ip, port: d.portHttp||80,
-        status, ms: r.hidup ? Math.round(r.ms) : null, metode:'browser',
+        status, ms: status==='Offline' ? null : Math.round(ms), metode,
         oleh: (session?.email||'').split('@')[0] });
       const sel = document.querySelector(`[data-hasil="${d.id}"]`);
       if(sel) sel.innerHTML = selHasil(hasilTes[d.id]);
@@ -1667,6 +1758,33 @@ async function jalankanTes(daftar){
   toast(`Tes selesai: ${online} online, ${lambat} lambat, ${mati} tak terjangkau.`, mati?'warn':'ok');
 }
 
+function setAksiTes(){
+  $$('.aksi-btn').forEach(b=>b.className = `aksi-btn px-2.5 py-1.5 rounded-lg text-sm font-semibold ${
+    b.dataset.aksi===aksiTes ? 'bg-cyan2 text-ink-900' : 'text-slate-400 hover:text-white'}`);
+  $('#barisView').hidden = aksiTes === 'ping';
+}
+$$('.aksi-btn').forEach(b=>b.addEventListener('click', ()=>{
+  aksiTes = b.dataset.aksi; localStorage.setItem('cctvtmd_aksi', aksiTes); setAksiTes();
+}));
+
+/* ---- Tes view: muat snapshot kamera sebagai <img>, tanpa menyimpannya ----
+   Browser tidak bisa membaca isi gambar lintas-asal (aturan CORS), jadi
+   gambarnya hanya ditampilkan untuk diperiksa mata. Yang bisa diketahui kode:
+   gambar berhasil dimuat atau tidak, berapa lama, dan ukuran pikselnya. */
+function tesView(d, batas){
+  return new Promise(res=>{
+    const pola = $('#polaSnapshot').value.trim() || '/ISAPI/Streaming/channels/101/picture';
+    const pemisah = pola.includes('?') ? '&' : '?';
+    const url = `http://${d.ip}:${d.portHttp||80}${pola}${pemisah}_=${Date.now()}`;
+    const img = new Image();
+    const t0 = performance.now();
+    const jam = setTimeout(()=>{ img.src=''; res({ ok:false, ms:performance.now()-t0, url }); }, batas);
+    img.onload  = ()=>{ clearTimeout(jam); res({ ok:true, ms:performance.now()-t0, url, w:img.naturalWidth, h:img.naturalHeight }); };
+    img.onerror = ()=>{ clearTimeout(jam); res({ ok:false, ms:performance.now()-t0, url }); };
+    img.src = url;
+  });
+}
+
 $('#btnTesSemua').addEventListener('click', ()=>jalankanTes(filtered().filter(d=>isIp(d.ip))));
 $('#btnTesPilih').addEventListener('click', ()=>jalankanTes(filtered().filter(d=>pilihTes.has(d.id) && isIp(d.ip))));
 $('#btnTesBatal').addEventListener('click', ()=>{ tesDihentikan = true; toast('Tes dihentikan.','warn'); });
@@ -1681,6 +1799,19 @@ document.addEventListener('change', e=>{
     setJmlPilih();
   }
 });
+
+/* Gambar hasil tes view ditampilkan langsung dari kamera — tidak diunduh
+   ke Supabase, tidak disimpan, jadi nol pemakaian kuota. */
+function tambahGaleri(d, v){
+  const el = document.createElement('div');
+  el.className = 'border border-line rounded-lg overflow-hidden bg-ink-700';
+  el.innerHTML = `<img src="${esc(v.url)}" alt="View ${esc(d.nama)}" class="w-full h-24 object-cover">
+    <div class="px-2 py-1.5">
+      <div class="text-xs font-semibold text-white truncate">${esc(d.nama)}</div>
+      <div class="text-[11px] text-slate-500 font-mono">${v.w||'?'}×${v.h||'?'} · ${Math.round(v.ms)} ms</div>
+    </div>`;
+  $('#galeriView').appendChild(el);
+}
 
 /* ---- riwayat ping per device, dibuka dari panel Detail ---- */
 async function bukaRiwayatPing(id){
@@ -1764,6 +1895,7 @@ function renderCheck(){
     </tbody></table>`;
   pasangPenarik('#ckTable', 'check');
   setJmlPilih();
+  setAksiTes();
   renderCkStats();
   if(!$('#ckTanggal').value) $('#ckTanggal').value = hariIni();
   if(!$('#ckPic').value) $('#ckPic').value = (session?.email||'').split('@')[0];
