@@ -458,6 +458,31 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
         </div>
       </div>
 
+      <div class="mt-4 pt-3 border-t border-line">
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="btnTesSemua" class="px-3 py-2 rounded-xl bg-cyan2 text-ink-900 text-sm font-bold flex items-center gap-1.5">
+            <i data-lucide="activity" class="w-4 h-4"></i> Tes semua IP yang tampil
+          </button>
+          <button id="btnTesPilih" class="px-3 py-2 rounded-xl border border-line text-sm hover:border-cyan2 flex items-center gap-1.5">
+            <i data-lucide="list-checks" class="w-4 h-4"></i> Tes yang dicentang (<span id="jmlPilih">0</span>)
+          </button>
+          <button id="btnTesBatal" hidden class="px-3 py-2 rounded-xl border border-off text-off text-sm font-semibold">Hentikan</button>
+          <label class="flex items-center gap-1.5 text-sm ml-2">Ambang lambat
+            <input id="ambangMs" type="number" min="10" max="5000" value="60" class="w-20 bg-ink-700 border border-line rounded-lg px-2 py-1 text-sm font-mono"> ms</label>
+          <label class="flex items-center gap-1.5 text-sm">Batas tunggu
+            <input id="timeoutMs" type="number" min="500" max="15000" step="250" value="3000" class="w-24 bg-ink-700 border border-line rounded-lg px-2 py-1 text-sm font-mono"> ms</label>
+        </div>
+        <div id="tesProgres" class="hidden mt-2">
+          <div class="h-2 bg-ink-600 rounded overflow-hidden"><div id="tesBar" class="h-full bg-cyan2" style="width:0%"></div></div>
+          <p id="tesStatus" class="text-xs text-slate-500 mt-1.5"></p>
+        </div>
+        <p class="text-xs text-slate-500 mt-2 leading-relaxed">
+          Tes dijalankan dari browser ini ke <span class="font-mono">http://ip:port</span> — mengukur sambungan TCP/HTTP, <span class="text-maint">bukan ping ICMP</span>.
+          Angkanya memuat handshake HTTP sehingga lebih besar daripada ping biasa; pakai untuk membandingkan antar-kamera, bukan sebagai angka mutlak.
+          Browser harus berada di jaringan yang sama dengan kamera. Untuk ICMP sungguhan dan penjadwalan harian otomatis, jalankan <span class="font-mono">agen-ping-cctv.py</span>.
+        </p>
+      </div>
+
       <div id="ckStats" class="grid grid-cols-2 md:grid-cols-5 gap-2 mt-4"></div>
     </div>
 
@@ -834,6 +859,27 @@ const api = {
   async hitungPakaiSpek(sp){
     if(!CLOUD || !sp?.id) return;
     try{ await sb.from('spek_katalog').update({ dipakai:(sp.dipakai||0)+1 }).eq('id', sp.id); }catch(e){}
+  },
+  async simpanPing(baris){
+    if(!CLOUD){
+      const key='cctvtmd_ping::'+(session?.email||'anon');
+      let arr=[]; try{ arr=JSON.parse(localStorage.getItem(key)||'[]'); }catch{}
+      localStorage.setItem(key, JSON.stringify([...baris, ...arr].slice(0, 4000))); return;
+    }
+    for(let i=0;i<baris.length;i+=200){
+      const { error } = await sb.from('ping_log').insert(baris.slice(i,i+200));
+      if(error) throw error;
+    }
+  },
+  async riwayatPing(deviceId, limit = 60){
+    if(!CLOUD){
+      try{ return JSON.parse(localStorage.getItem('cctvtmd_ping::'+(session?.email||'anon'))||'[]')
+        .filter(x=>x.device_id===deviceId).slice(0,limit); }catch{ return []; }
+    }
+    const { data, error } = await sb.from('ping_log').select('waktu,status,ms,metode')
+      .eq('device_id', deviceId).order('waktu',{ascending:false}).limit(limit);
+    if(error) throw error;
+    return data||[];
   },
   async listChecklists(limit = 60){
     if(!CLOUD){ try{ return JSON.parse(localStorage.getItem('cctvtmd_checklists::'+(session?.email||'anon'))||'[]'); }catch{ return []; } }
@@ -1522,6 +1568,155 @@ $$('.col-btn').forEach(b=>b.addEventListener('click', ()=>{
 }));
 addEventListener('resize', ()=>{ if(state.tab==='monitor' && state.view==='grid') terapkanKolom(); });
 
+/* ============================ TES KONEKTIVITAS IP ============================ */
+/* Browser tidak bisa mengirim paket ICMP — itu dilarang sandbox browser, bukan
+   keterbatasan kode. Yang dilakukan di sini: membuka sambungan HTTP ke
+   http://ip:port dan mengukur waktu sampai ada tanggapan.
+     tanggapan apa pun (termasuk 401/404)  -> perangkat hidup, waktu dicatat
+     gagal cepat (koneksi ditolak)         -> dianggap tidak terjangkau
+     habis batas tunggu                    -> Offline
+   Untuk ICMP sungguhan, pakai agen di luar browser. */
+let pilihTes = new Set();
+let hasilTes = {};          // { deviceId: {status, ms} }
+let tesBerjalan = false, tesDihentikan = false;
+
+function selHasil(h){
+  if(!h) return '<span class="text-slate-600">—</span>';
+  if(h.status==='Offline') return '<span class="text-off font-semibold">tak terjangkau</span>';
+  const w = h.status==='Maintenance' ? 'text-maint' : 'text-on';
+  return `<span class="${w} font-semibold">${Math.round(h.ms)} ms</span>`;
+}
+function setJmlPilih(){ const el=$('#jmlPilih'); if(el) el.textContent = pilihTes.size; }
+
+async function tesSatu(d, batas){
+  const url = `http://${d.ip}:${d.portHttp||80}/`;
+  const ac = new AbortController();
+  const jam = setTimeout(()=>ac.abort(), batas);
+  const t0 = performance.now();
+  try{
+    await fetch(url, { mode:'no-cors', cache:'no-store', signal:ac.signal });
+    clearTimeout(jam);
+    return { ms: performance.now()-t0, hidup:true };
+  }catch(err){
+    clearTimeout(jam);
+    const ms = performance.now()-t0;
+    /* Gagal sebelum batas tunggu biasanya berarti koneksi ditolak:
+       host mungkin hidup tapi portnya tertutup. Tetap dihitung tidak terjangkau
+       karena yang diuji adalah "apakah kamera bisa dibuka". */
+    return { ms, hidup:false, cepat: ms < batas*0.9 };
+  }
+}
+
+async function jalankanTes(daftar){
+  if(!daftar.length){ toast('Tidak ada device untuk dites.','warn'); return; }
+  if(tesBerjalan){ toast('Tes sedang berjalan.','warn'); return; }
+  const ambang = +$('#ambangMs').value || 60;
+  const batas  = +$('#timeoutMs').value || 3000;
+  tesBerjalan = true; tesDihentikan = false;
+  $('#tesProgres').classList.remove('hidden');
+  $('#btnTesBatal').hidden = false;
+  $('#btnTesSemua').disabled = $('#btnTesPilih').disabled = true;
+
+  const mulai = Date.now();
+  let selesai = 0, online = 0, lambat = 0, mati = 0;
+  const baris = [];
+  const PARALEL = 10;                    // jangan membanjiri jaringan estate
+
+  async function pekerja(antrean){
+    while(antrean.length && !tesDihentikan){
+      const d = antrean.shift();
+      const r = await tesSatu(d, batas);
+      const status = !r.hidup ? 'Offline' : (r.ms > ambang ? 'Maintenance' : 'Online');
+      hasilTes[d.id] = { status, ms: r.ms };
+      if(status==='Online') online++; else if(status==='Maintenance') lambat++; else mati++;
+      /* hasil tes langsung mengisi checklist hari ini */
+      ck.items[d.id] = status==='Online' ? 'hidup' : status==='Offline' ? 'mati' : 'maintenance';
+      if(status==='Maintenance') ck.catatan[d.id] = `tanggap lambat ${Math.round(r.ms)} ms`;
+      baris.push({ device_id: d.id, nama: d.nama, ip: d.ip, port: d.portHttp||80,
+        status, ms: r.hidup ? Math.round(r.ms) : null, metode:'browser',
+        oleh: (session?.email||'').split('@')[0] });
+      const sel = document.querySelector(`[data-hasil="${d.id}"]`);
+      if(sel) sel.innerHTML = selHasil(hasilTes[d.id]);
+      selesai++;
+      $('#tesBar').style.width = Math.round(selesai/daftar.length*100)+'%';
+      $('#tesStatus').textContent = `${selesai} / ${daftar.length} — ${online} online, ${lambat} lambat, ${mati} tak terjangkau`;
+    }
+  }
+  const antrean = [...daftar];
+  await Promise.all(Array.from({length:Math.min(PARALEL, antrean.length)}, ()=>pekerja(antrean)));
+
+  tesBerjalan = false;
+  $('#btnTesBatal').hidden = true;
+  $('#btnTesSemua').disabled = $('#btnTesPilih').disabled = false;
+  const detik = ((Date.now()-mulai)/1000).toFixed(0);
+  $('#tesStatus').innerHTML = `<span class="text-on">Selesai dalam ${detik} detik.</span> ${online} online, ${lambat} lambat (>${ambang} ms), ${mati} tak terjangkau${tesDihentikan?' — dihentikan di tengah jalan':''}.`;
+
+  try{ await api.simpanPing(baris); }
+  catch(err){ toast('Hasil tes gagal disimpan: '+(err.message||err),'err'); }
+
+  /* status device ikut diperbarui kalau pilihannya dicentang */
+  if($('#ckSync').checked && canEdit()){
+    for(const b of baris){
+      const d = devices.find(x=>x.id===b.device_id);
+      if(d && d.status !== b.status){
+        try{ await api.patch(d.id, { status: b.status }); d.status = b.status; }catch(e){}
+      }
+    }
+  }
+  renderCheck(); lucide.createIcons();
+  toast(`Tes selesai: ${online} online, ${lambat} lambat, ${mati} tak terjangkau.`, mati?'warn':'ok');
+}
+
+$('#btnTesSemua').addEventListener('click', ()=>jalankanTes(filtered().filter(d=>isIp(d.ip))));
+$('#btnTesPilih').addEventListener('click', ()=>jalankanTes(filtered().filter(d=>pilihTes.has(d.id) && isIp(d.ip))));
+$('#btnTesBatal').addEventListener('click', ()=>{ tesDihentikan = true; toast('Tes dihentikan.','warn'); });
+
+document.addEventListener('change', e=>{
+  const c = e.target.closest('[data-pilih]');
+  if(c){ c.checked ? pilihTes.add(c.dataset.pilih) : pilihTes.delete(c.dataset.pilih); setJmlPilih(); return; }
+  if(e.target.id === 'pilihSemua'){
+    const on = e.target.checked;
+    filtered().forEach(d=>on ? pilihTes.add(d.id) : pilihTes.delete(d.id));
+    $$('.pilihDev').forEach(x=>x.checked = on);
+    setJmlPilih();
+  }
+});
+
+/* ---- riwayat ping per device, dibuka dari panel Detail ---- */
+async function bukaRiwayatPing(id){
+  const d = devices.find(x=>x.id===id); if(!d) return;
+  $('#detailTitle').innerHTML = `Riwayat tes — ${esc(d.nama)}`;
+  $('#detailBody').innerHTML = '<p class="text-sm text-slate-500">Memuat…</p>';
+  $('#detail').hidden = false;
+  try{
+    const r = await api.riwayatPing(id, 60);
+    if(!r.length){ $('#detailBody').innerHTML = '<p class="text-sm text-slate-500">Belum ada riwayat tes untuk device ini.</p>'; return; }
+    const maks = Math.max(...r.filter(x=>x.ms).map(x=>+x.ms), 1);
+    $('#detailBody').innerHTML = `
+      <div class="flex items-end gap-1 h-28 mb-4 border-b border-line pb-1">
+        ${[...r].reverse().map(x=>{
+          const t = x.status==='Offline' ? 'off' : x.status==='Maintenance' ? 'maint' : 'on';
+          const tinggi = x.ms ? Math.max(4, Math.round(+x.ms/maks*100)) : 100;
+          return `<div title="${new Date(x.waktu).toLocaleString('id-ID')} — ${x.status}${x.ms?` ${Math.round(x.ms)} ms`:''} (${x.metode})"
+            style="height:${tinggi}%" class="flex-1 min-w-[3px] rounded-t bg-${t}"></div>`;
+        }).join('')}
+      </div>
+      <table class="w-full text-xs">
+        <thead class="text-slate-500"><tr><th class="text-left py-1">Waktu</th><th class="text-left">Status</th><th class="text-right">Tanggap</th><th class="text-left pl-3">Metode</th></tr></thead>
+        <tbody>${r.map(x=>`<tr class="border-t border-line">
+          <td class="py-1.5 font-mono">${new Date(x.waktu).toLocaleString('id-ID')}</td>
+          <td>${statusPill(x.status)}</td>
+          <td class="text-right font-mono">${x.ms?Math.round(x.ms)+' ms':'—'}</td>
+          <td class="pl-3 text-slate-500">${esc(x.metode)}</td></tr>`).join('')}</tbody>
+      </table>`;
+  }catch(err){ $('#detailBody').innerHTML = `<p class="text-sm text-off">Gagal memuat: ${esc(err.message||err)}</p>`; }
+  lucide.createIcons();
+}
+document.addEventListener('click', e=>{
+  const b = e.target.closest('[data-riwayatping]');
+  if(b){ e.preventDefault(); bukaRiwayatPing(b.dataset.riwayatping); }
+});
+
 /* ============================ CHECKLIST HARIAN ============================ */
 const KONDISI = [['hidup','Hidup','on'],['mati','Mati','off'],['maintenance','Maintenance','maint']];
 const hariIni = () => new Date().toISOString().slice(0,10);
@@ -1545,14 +1740,18 @@ function renderCheck(){
   const f = filtered();
   $('#ckTable').innerHTML = `<table class="w-full text-sm min-w-[900px]">
     <thead class="bg-ink-700 text-slate-400"><tr>
+      <th class="p-2.5 w-10 text-center"><input type="checkbox" id="pilihSemua" class="w-4 h-4" title="Centang semua yang tampil"></th>
       <th class="p-2.5 text-left">Nama device</th><th class="p-2.5 text-left">IP</th>
       <th class="p-2.5 text-left">Cluster / zona</th>
+      <th class="p-2.5 text-left w-32">Hasil tes</th>
       <th class="p-2.5 text-center w-[320px]">Kondisi hari ini</th>
       <th class="p-2.5 text-left">Catatan</th></tr></thead>
     <tbody>${f.length ? f.map(d=>`<tr class="border-t border-line">
+      <td class="p-2 text-center"><input type="checkbox" class="pilihDev w-4 h-4" data-pilih="${d.id}" ${pilihTes.has(d.id)?'checked':''}></td>
       <td class="p-2 font-medium text-white">${esc(d.nama)}</td>
       <td class="p-2 font-mono whitespace-nowrap">${ipLink(d)} ${flagIp(d)}</td>
       <td class="p-2 text-slate-400">${esc(d.cluster)} · ${esc(d.zona)}</td>
+      <td class="p-2 font-mono text-xs" data-hasil="${d.id}">${selHasil(hasilTes[d.id])}</td>
       <td class="p-2">
         <div class="flex gap-1 justify-center">
           ${KONDISI.map(([k,l,c])=>`<button data-ck="${d.id}" data-kondisi="${k}"
@@ -1561,9 +1760,10 @@ function renderCheck(){
       </td>
       <td class="p-2"><input data-cknote="${d.id}" value="${esc(ck.catatan[d.id]||'')}" placeholder="opsional"
             class="w-full bg-transparent border border-transparent hover:border-line focus:border-cyan2 rounded-lg px-2 py-1 text-xs focus:outline-none"></td>
-    </tr>`).join('') : `<tr><td colspan="5" class="p-8 text-center text-slate-500">Tidak ada device untuk diperiksa. Longgarkan filter.</td></tr>`}
+    </tr>`).join('') : `<tr><td colspan="7" class="p-8 text-center text-slate-500">Tidak ada device untuk diperiksa. Longgarkan filter.</td></tr>`}
     </tbody></table>`;
   pasangPenarik('#ckTable', 'check');
+  setJmlPilih();
   renderCkStats();
   if(!$('#ckTanggal').value) $('#ckTanggal').value = hariIni();
   if(!$('#ckPic').value) $('#ckPic').value = (session?.email||'').split('@')[0];
@@ -1667,7 +1867,9 @@ $('#ckPrint').addEventListener('click', ()=>{
     const tanda = kk => k===kk ? '✓' : '';
     return `<tr><td>${esc(d.nama)}</td><td>${esc(d.ip)}</td><td>${esc(d.cluster)} / ${esc(d.zona)}</td>
       <td style="text-align:center">${tanda('hidup')}</td><td style="text-align:center">${tanda('mati')}</td>
-      <td style="text-align:center">${tanda('maintenance')}</td><td>${esc(ck.catatan[d.id]||'')}</td></tr>`;
+      <td style="text-align:center">${tanda('maintenance')}</td>
+      <td style="text-align:right">${hasilTes[d.id] ? (hasilTes[d.id].status==='Offline' ? '—' : Math.round(hasilTes[d.id].ms)+' ms') : ''}</td>
+      <td>${esc(ck.catatan[d.id]||'')}</td></tr>`;
   }).join('');
   $('#printArea').innerHTML = `
     <h1>Checklist Harian CCTV — TMD</h1>
@@ -1680,8 +1882,9 @@ $('#ckPrint').addEventListener('click', ()=>{
     </table>
     <table><thead><tr>
       <th>Nama device</th><th>IP address</th><th>Cluster / zona</th>
-      <th>Hidup</th><th>Mati</th><th>Maintenance</th><th>Catatan</th></tr></thead>
-      <tbody>${baris || '<tr><td colspan="7">Tidak ada data.</td></tr>'}</tbody></table>
+      <th>Hidup</th><th>Mati</th><th>Maintenance</th><th>Tanggap</th><th>Catatan</th></tr></thead>
+      <tbody>${baris || '<tr><td colspan="8">Tidak ada data.</td></tr>'}</tbody></table>
+    <div style="margin-top:6px;font-size:10px">Metode tes: sambungan HTTP dari browser (bukan ICMP). Ambang lambat ${+($('#ambangMs')?.value)||60} ms.</div>
     <div style="margin-top:26px; display:flex; gap:60px">
       <div>Diperiksa oleh,<br><br><br><b>${esc(data.pic||'')}</b><div style="border-top:1px solid #000; width:170px"></div></div>
       <div>Mengetahui,<br><br><br><br><div style="border-top:1px solid #000; width:170px"></div></div>
@@ -1843,6 +2046,8 @@ function openDetail(id){
           <a href="http://${esc(d.ip)}:${esc(d.portHttp)}" target="_blank" rel="noopener"
              class="px-3 py-2 rounded border border-line text-sm hover:border-cyan2 flex items-center gap-1.5">
              <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Buka web kamera</a>
+          <button data-riwayatping="${d.id}" class="px-3 py-2 rounded border border-line text-sm hover:border-cyan2 flex items-center gap-1.5">
+            <i data-lucide="activity" class="w-3.5 h-3.5"></i> Riwayat tes</button>
           ${canEdit()?`<button data-act="edit" data-id="${d.id}" class="px-3 py-2 rounded bg-cyan2 text-ink-900 font-bold text-sm">Edit device</button>`:''}
         </div>
       </div>
