@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -21,8 +21,8 @@
    Isi keduanya        -> mode SUPABASE (auth + Postgres, multi-user)
    Jalankan supabase-setup-team.sql di SQL Editor Supabase lebih dulu.
 ===================================================================== */
-const SUPABASE_URL      = "https://pvsjvvovqcvvcpiozxzt.supabase.co";   // contoh: "https://abcdefgh.supabase.co"
-const SUPABASE_ANON_KEY = "sb_publishable_YMsD51FNdhadl7B7mIfJJw_5-IbDL0U";   // anon / publishable key (bukan service_role)
+const SUPABASE_URL      = "https://pvsjvvovqcvvcpiozxzt.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_YMsD51FNdhadl7B7mIfJJw_5-IbDL0U";   // publishable key — aman di browser SELAMA RLS menyala
 
 /* Pendaftaran mandiri. false = hanya Administrator yang membuat akun, lewat
    Supabase Dashboard > Authentication > Users > Add user (centang auto confirm).
@@ -1190,6 +1190,7 @@ function seedData(){
 
 /* ============================ STATE & FILTER ============================ */
 let state = { tab:'monitor', view:'grid', q:'', cluster:'', zona:'', brand:'', status:'', nvr:'', shared:false,
+               editTabel: localStorage.getItem('cctvtmd_edittabel')==='1',
                cols: localStorage.getItem('cctvtmd_cols') || 'auto', sort:{key:'nama',dir:1} };
 let ck = { items:{}, catatan:{} };   // hasil checklist yang sedang diisi: {deviceId: 'hidup'|'mati'|'maintenance'}
 let ckRiwayat = null;
@@ -1297,9 +1298,19 @@ function renderGrid(){
 /* ---- sel tabel yang bisa diedit langsung ---- */
 const KOLOM = { nama:'nama', ip:'ip', portHttp:'port_http', cluster:'cluster', zona:'zona',
                 brand:'brand', seri:'seri', resolusi:'resolusi', lensa:'lensa_mm',
-                lat:'lat', lng:'lng', status:'status', kategori:'kategori', ipStatus:'ip_status' };
+                lat:'lat', lng:'lng', status:'status', kategori:'kategori', ipStatus:'ip_status',
+                nvrId:'nvr_id', nvrNama:'nvr_nama', nvrIp:'nvr_ip', nvrChannel:'nvr_channel',
+                portRtsp:'port_rtsp', tipeKamera:'tipe_kamera', ir:'ir_m', fitur:'fitur',
+                serial:'serial_number', mac:'mac', firmware:'firmware', daya:'daya',
+                tglPasang:'tgl_pasang', garansi:'garansi_sampai', catatan:'catatan' };
 const inp = (d,k,cls='') => `<input class="cell-edit ${cls}" data-edit="${d.id}" data-field="${k}" value="${esc(d[k] ?? '')}">`;
 const sel = (d,k,opsi) => `<select class="cell-edit" data-edit="${d.id}" data-field="${k}">${opsi.map(o=>`<option ${o===d[k]?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+/* Select yang nilainya berupa id, bukan teks — dipakai untuk tautan NVR. */
+const selId = (d,k,opsi,kosong='— tanpa NVR —') =>
+  `<select class="cell-edit" data-edit="${d.id}" data-field="${k}">
+     <option value="">${kosong}</option>
+     ${opsi.map(o=>`<option value="${esc(o.id)}" ${o.id===d[k]?'selected':''}>${esc(o.nama)} · ${esc(o.ip)}</option>`).join('')}
+   </select>`;
 
 async function simpanSel(el){
   const d = devices.find(x=>x.id===el.dataset.edit); if(!d) return;
@@ -1318,7 +1329,17 @@ async function simpanSel(el){
   d[k] = v;
   try{
     const kolom = {};
-    kolom[KOLOM[k] || k] = (k==='lat'||k==='lng') ? (v===''?null:+v) : v;
+    kolom[KOLOM[k] || k] = (k==='lat'||k==='lng') ? (v===''?null:+v)
+                         : (k==='nvrId') ? (v===''?null:v)
+                         : v;
+    /* Menautkan NVR dari tabel sekaligus menyalin nama dan IP-nya,
+       supaya catatan cadangan tetap benar kalau tautannya hilang nanti. */
+    if(k==='nvrId'){
+      const n = v ? idxById.get(v) : null;
+      kolom.nvr_nama = n ? n.nama : null;
+      kolom.nvr_ip   = n ? n.ip   : null;
+      d.nvrNama = n?.nama || ''; d.nvrIp = n?.ip || '';
+    }
     await api.patch(d.id, kolom);
     if(k==='lat' || k==='lng'){
       riwayatPindah.push({ id:d.id, nama:d.nama, lat: k==='lat'?lama:d.lat, lng: k==='lng'?lama:d.lng });
@@ -1327,6 +1348,7 @@ async function simpanSel(el){
     }
     el.classList.add('tersimpan'); setTimeout(()=>el.classList.remove('tersimpan'), 1000);
     renderStats();
+    if(k==='nvrId'){ bangunIndeks(); fillFilters(); }
   }catch(err){ d[k] = lama; el.value = lama ?? ''; toast('Gagal menyimpan: '+(err.message||err),'err'); }
 }
 document.addEventListener('change', e=>{ const el = e.target.closest('[data-edit]'); if(el) simpanSel(el); });
@@ -1343,9 +1365,14 @@ const KOLOM_TABEL = [
   { k:'ip',        l:'IP',             baku:true,  sel:(d,E)=>`<td class="p-1.5 font-mono whitespace-nowrap">${E?inp(d,'ip','font-mono !w-32 inline-block')+'<span class="text-slate-600">:</span>'+inp(d,'portHttp','font-mono !w-14 inline-block')+' '+ipIconLink(d):ipLink(d)} ${flagIp(d)}</td>` },
   { k:'cluster',   l:'Cluster',        baku:true,  sel:(d,E)=>`<td class="p-1.5">${E?inp(d,'cluster'):esc(d.cluster)}</td>` },
   { k:'zona',      l:'Zona',           baku:true,  sel:(d,E)=>`<td class="p-1.5">${E?inp(d,'zona'):esc(d.zona)}</td>` },
-  { k:'nvr',       l:'NVR perekam',    baku:true,  sel:d=>{ const n=nvrDari(d); return `<td class="p-1.5 text-xs">${n
-      ? `<span class="text-slate-300">${esc(n.nama||n.ip)}</span>${n.ip&&n.nama?`<span class="text-slate-500 font-mono block">${esc(n.ip)}</span>`:''}`
-      : '<span class="text-maint">belum diisi</span>'}</td>`; } },
+  { k:'nvr',       l:'NVR perekam',    baku:true,  sel:(d,E)=>{
+      if(E) return `<td class="p-1.5 text-xs">${selId(d,'nvrId',daftarNvr())}</td>`;
+      const n=nvrDari(d);
+      return `<td class="p-1.5 text-xs">${n
+        ? `<span class="text-slate-300">${esc(n.nama||n.ip)}</span>${n.ip&&n.nama?`<span class="text-slate-500 font-mono block">${esc(n.ip)}</span>`:''}`
+        : '<span class="text-maint">belum diisi</span>'}</td>`; } },
+  { k:'nvrNama',   l:'Nama NVR (manual)', baku:false, sel:(d,E)=>`<td class="p-1.5 text-xs">${E?inp(d,'nvrNama'):esc(d.nvrNama||'—')}</td>` },
+  { k:'nvrIp',     l:'IP NVR (manual)',   baku:false, sel:(d,E)=>`<td class="p-1.5 font-mono text-xs">${E?inp(d,'nvrIp','font-mono'):esc(d.nvrIp||'—')}</td>` },
   { k:'nvrChannel',l:'Channel NVR',    baku:true,  sel:(d,E)=>`<td class="p-1.5 font-mono text-xs">${E?inp(d,'nvrChannel','font-mono !w-16 inline-block'):(d.nvrChannel?'ch'+esc(d.nvrChannel):'—')}</td>` },
   { k:'brand',     l:'Brand',          baku:true,  sel:(d,E)=>`<td class="p-1.5 text-slate-400">${E?inp(d,'brand'):esc(d.brand)}</td>` },
   { k:'seri',      l:'Seri / model',   baku:true,  sel:(d,E)=>`<td class="p-1.5 font-mono text-xs text-slate-300">${E?inp(d,'seri','font-mono'):esc(d.seri||'—')}</td>` },
@@ -1355,20 +1382,21 @@ const KOLOM_TABEL = [
   { k:'status',    l:'Status',         baku:true,  sel:(d,E)=>`<td class="p-1.5">${E?sel(d,'status',STATUS):statusPill(d.status)}</td>` },
 
   { k:'kategori',  l:'Kategori',       baku:false, sel:(d,E)=>`<td class="p-1.5 text-slate-400">${E?sel(d,'kategori',['CCTV','NVR','Switch','Access Point','Access Control','Server','Lainnya']):esc(d.kategori||'CCTV')}</td>` },
-  { k:'portRtsp',  l:'Port RTSP',      baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs text-slate-400">${esc(d.portRtsp||'—')}</td>` },
+  { k:'portRtsp',  l:'Port RTSP',      baku:false, sel:(d,E)=>`<td class="p-1.5 font-mono text-xs text-slate-400">${E?inp(d,'portRtsp','font-mono !w-20 inline-block'):esc(d.portRtsp||'—')}</td>` },
   { k:'ipStatus',  l:'Status IP',      baku:false, sel:(d,E)=>`<td class="p-1.5 text-xs">${E?sel(d,'ipStatus',['Used','Reserved']):esc(d.ipStatus||'Used')}</td>` },
-  { k:'tipeKamera',l:'Bentuk kamera',  baku:false, sel:d=>`<td class="p-1.5 text-slate-400">${esc(d.tipeKamera||'—')}</td>` },
-  { k:'ir',        l:'Jangkauan IR',   baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs text-slate-400">${d.ir?esc(d.ir)+' m':'—'}</td>` },
-  { k:'fitur',     l:'Fitur',          baku:false, sel:d=>`<td class="p-1.5 text-xs text-slate-400">${esc(d.fitur||'—')}</td>` },
+  { k:'tipeKamera',l:'Bentuk kamera',  baku:false, sel:(d,E)=>`<td class="p-1.5 text-slate-400">${E?sel(d,'tipeKamera',['','Dome','Turret','Bullet','PTZ','Fisheye','Box','Panoramic']):esc(d.tipeKamera||'—')}</td>` },
+  { k:'ir',        l:'Jangkauan IR',   baku:false, sel:(d,E)=>`<td class="p-1.5 font-mono text-xs text-slate-400">${E?inp(d,'ir','font-mono !w-20 inline-block'):(d.ir?esc(d.ir)+' m':'—')}</td>` },
+  { k:'fitur',     l:'Fitur',          baku:false, sel:(d,E)=>`<td class="p-1.5 text-xs text-slate-400">${E?inp(d,'fitur'):esc(d.fitur||'—')}</td>` },
   { k:'arah',      l:'Arah hadap',     baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs">${(d.arah===null||d.arah===undefined||d.arah==='')?'<span class="text-maint">belum</span>':`${Math.round(d.arah)}° <span class="text-slate-500">${namaArah(d.arah)}</span>`}</td>` },
   { k:'dori',      l:'Cakupan DORI',   baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs text-slate-400">${punyaDori(d)?`D${d.doriD||'—'} O${d.doriO||'—'} R${d.doriR||'—'} <span class="text-on">I${d.doriI||'—'}</span>`:'—'}</td>` },
-  { k:'serial',    l:'Serial number',  baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs text-slate-400">${esc(d.serial||'—')}</td>` },
-  { k:'mac',       l:'MAC address',    baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs text-slate-400">${esc(d.mac||'—')}</td>` },
-  { k:'firmware',  l:'Firmware',       baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs text-slate-400">${esc(d.firmware||'—')}</td>` },
-  { k:'daya',      l:'Sumber daya',    baku:false, sel:d=>`<td class="p-1.5 text-xs text-slate-400">${esc(d.daya||'—')}</td>` },
-  { k:'tglPasang', l:'Tanggal pasang', baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs text-slate-400">${esc(d.tglPasang||'—')}</td>` },
+  { k:'serial',    l:'Serial number',  baku:false, sel:(d,E)=>`<td class="p-1.5 font-mono text-xs text-slate-400">${E?inp(d,'serial','font-mono'):esc(d.serial||'—')}</td>` },
+  { k:'mac',       l:'MAC address',    baku:false, sel:(d,E)=>`<td class="p-1.5 font-mono text-xs text-slate-400">${E?inp(d,'mac','font-mono'):esc(d.mac||'—')}</td>` },
+  { k:'firmware',  l:'Firmware',       baku:false, sel:(d,E)=>`<td class="p-1.5 font-mono text-xs text-slate-400">${E?inp(d,'firmware','font-mono'):esc(d.firmware||'—')}</td>` },
+  { k:'daya',      l:'Sumber daya',    baku:false, sel:(d,E)=>`<td class="p-1.5 text-xs text-slate-400">${E?sel(d,'daya',['','PoE (802.3af)','PoE+ (802.3at)','12V DC','24V AC','Solar / baterai']):esc(d.daya||'—')}</td>` },
+  { k:'tglPasang', l:'Tanggal pasang', baku:false, sel:(d,E)=>`<td class="p-1.5 font-mono text-xs text-slate-400">${E?inp(d,'tglPasang','font-mono'):esc(d.tglPasang||'—')}</td>` },
   { k:'garansi',   l:'Garansi sampai', baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs">${d.garansi?esc(d.garansi)+garansiNote(d):'<span class="text-slate-600">—</span>'}</td>` },
-  { k:'catatan',   l:'Catatan',        baku:false, sel:d=>`<td class="p-1.5 text-xs text-slate-400">${esc(d.catatan||'—')}</td>` }
+  { k:'catatan',   l:'Catatan',        baku:false, sel:(d,E)=>`<td class="p-1.5 text-xs text-slate-400">${E?inp(d,'catatan'):esc(d.catatan||'—')}</td>` },
+
 ];
 
 function kolomAktif(){
@@ -1422,13 +1450,54 @@ document.addEventListener('click', e=>{
   if(!e.target.closest('#menuKolom') && !e.target.closest('#btnKolom')) $('#menuKolom').hidden = true;
 });
 
+/* ---------- Pengurutan yang sadar angka ----------
+   Sebelumnya semua nilai dibandingkan sebagai teks, sehingga channel 32 jatuh
+   di antara 4 dan 3, dan IP 10.95.99.9 berada setelah 10.95.99.44.
+   Sekarang: IP dibandingkan per oktet, angka dibandingkan sebagai angka,
+   tanggal sebagai tanggal, dan teks memakai collator numerik supaya
+   CBD-TMS-2 datang sebelum CBD-TMS-10. */
+const kolator = new Intl.Collator('id', { numeric:true, sensitivity:'base' });
+const ipAngka = ip => isIp(ip)
+  ? ip.split('.').reduce((a,o)=>a*256 + (+o), 0)
+  : -1;
+const angkaMurni = v => {
+  if(v === null || v === undefined || v === '') return null;
+  const t = String(v).trim().replace(',', '.');
+  return /^-?\d+(\.\d+)?$/.test(t) ? +t : null;
+};
+function bandingkan(a, b, k){
+  if(k === 'ip')  return ipAngka(a.ip) - ipAngka(b.ip);
+  if(k === 'lat') return (+a.lat || 0) - (+b.lat || 0);
+  if(k === 'nvr'){
+    const na = nvrDari(a), nb = nvrDari(b);
+    return kolator.compare(na ? (na.nama||na.ip) : 'zzz', nb ? (nb.nama||nb.ip) : 'zzz');
+  }
+  if(k === 'dori') return (a.doriI || 0) - (b.doriI || 0);
+  if(k === 'arah') return (a.arah ?? 999) - (b.arah ?? 999);
+
+  const va = a[k] ?? '', vb = b[k] ?? '';
+  const na = angkaMurni(va), nb = angkaMurni(vb);
+  if(na !== null && nb !== null) return na - nb;
+
+  if(k === 'tglPasang' || k === 'garansi') return String(va).localeCompare(String(vb));
+  return kolator.compare(String(va), String(vb));
+}
+
 function renderList(){
   const aktif = kolomAktif();
   const tampil = KOLOM_TABEL.filter(c=>aktif.has(c.k));
-  const f = filtered().slice().sort((a,b)=>{ const k=state.sort.key;
-    const va=(a[k]??'').toString().toLowerCase(), vb=(b[k]??'').toString().toLowerCase();
-    return va<vb?-state.sort.dir:va>vb?state.sort.dir:0; });
-  const E = canEdit();
+  /* Mode baca adalah bawaan. Sel baru berubah jadi kotak isian setelah
+     "Mode edit" dinyalakan — supaya klik tak sengaja tidak mengubah data,
+     dan tabel 274 baris lebih ringan saat hanya dibaca. */
+  const k = state.sort.key;
+  const kosong = d => { const v = d[k]; return v === null || v === undefined || v === ''; };
+  const f = filtered().slice().sort((a,b)=>{
+    /* Baris kosong selalu di bawah, apa pun arah pengurutannya. */
+    const ka = kosong(a), kb = kosong(b);
+    if(ka !== kb) return ka ? 1 : -1;
+    return bandingkan(a, b, k) * state.sort.dir;
+  });
+  const E = canEdit() && state.editTabel;
   const lebarMin = 320 + tampil.length*130;
 
   $('#viewList').innerHTML = `<table class="w-full text-sm" style="min-width:${lebarMin}px">
@@ -1451,12 +1520,23 @@ function renderList(){
 
   $('#viewList').insertAdjacentHTML('afterbegin',
     `<p class="px-3 py-2 text-xs text-slate-500 border-b border-line flex flex-wrap gap-x-3 gap-y-1 items-center">
-      ${E?'<span>Klik sel mana pun untuk mengubah langsung — tersimpan saat pindah sel atau menekan Enter.</span>':''}
+      ${canEdit()?`<button id="btnModeEdit" class="px-2.5 py-1 rounded-lg border text-xs font-semibold ${state.editTabel?'bg-maint text-ink-900 border-maint':'border-line text-slate-400 hover:border-cyan2'}">
+        ${state.editTabel?'● Mode edit aktif — klik untuk kunci':'Mode edit tabel'}</button>`:''}
+      ${E?'<span class="text-maint">Sel bisa diubah langsung; tersimpan saat pindah sel atau menekan Enter.</span>':'<span>Tabel dalam mode baca.</span>'}
       <span>Tarik garis pemisah untuk mengatur lebar. Klik kanan pada kepala tabel untuk memilih kolom.</span>
       <button id="btnKolom" class="ml-auto px-2 py-1 rounded border border-line text-cyan2 hover:border-cyan2">Pilih kolom (${tampil.length+2})</button>
       <button data-resetlebar="list" class="text-cyan2 hover:underline">Kembalikan lebar</button>
     </p>`);
 
+  const bm = $('#btnModeEdit');
+  if(bm) bm.addEventListener('click', ()=>{
+    state.editTabel = !state.editTabel;
+    localStorage.setItem('cctvtmd_edittabel', state.editTabel?'1':'0');
+    renderList();
+    toast(state.editTabel
+      ? 'Mode edit aktif — perubahan sel langsung tersimpan ke database.'
+      : 'Tabel dikunci kembali ke mode baca.', state.editTabel?'warn':'ok');
+  });
   $('#btnKolom').addEventListener('click', e=>{
     const r = e.target.getBoundingClientRect();
     menuKolom(r.left-220, r.bottom+6);
@@ -2320,66 +2400,119 @@ const KELOMPOK_SALIN = {
 /* Tidak pernah disalin, dengan alasannya masing-masing. */
 const TAK_DISALIN = ['ip','nama','serial','mac','lat','lng','arah','foto','fotoThumb','status','nvrChannel'];
 
-const idField = k => '#f_' + k.toLowerCase();
-function isiField(k, nilai){
-  const el = document.querySelector(idField(k));
-  if(el) el.value = nilai ?? '';
-}
 
 /* ---- Salin dari device lain, ke form yang sedang terbuka ---- */
+/* Pemetaan eksplisit field -> id input di form. Sebelumnya id ditebak dari
+   nama field (huruf kecil), yang diam-diam gagal untuk field apa pun yang
+   idnya tidak sama persis. Sekarang kalau sebuah field tidak punya input,
+   itu ketahuan saat dijalankan, bukan hilang tanpa jejak. */
+const FIELD_INPUT = {
+  brand:'f_brand', seri:'f_seri', tipeKamera:'f_tipekamera', resolusi:'f_resolusi',
+  lensa:'f_lensa', ir:'f_ir', fitur:'f_fitur', daya:'f_daya', firmware:'f_firmware',
+  kategori:'f_kategori', cluster:'f_cluster', zona:'f_zona',
+  portHttp:'f_porthttp', portRtsp:'f_portrtsp', ipStatus:'f_ipstatus',
+  fov:'f_fov', jangkauan:'f_jangkauan',
+  doriD:'f_dorid', doriO:'f_dorio', doriR:'f_dorir', doriI:'f_dorii',
+  tglPasang:'f_tglpasang', garansi:'f_garansi', catatan:'f_catatan',
+  nvrId:'f_nvrid', nvrNama:'f_nvrnama', nvrIp:'f_nvrip', nvrChannel:'f_nvrchannel'
+};
+function isiField(k, nilai){
+  const el = document.getElementById(FIELD_INPUT[k] || ('f_' + k.toLowerCase()));
+  if(!el){ console.warn('field tanpa input:', k); return false; }
+  el.value = nilai ?? '';
+  return true;
+}
+const adaIsi = v => v !== undefined && v !== null && String(v).trim() !== '';
+
 function bukaSalin(){
   const sekarang = $('#f_id').value;
-  const daftar = devices.filter(d=>d.id !== sekarang)
-    .sort((a,b)=>a.nama.localeCompare(b.nama));
+  const daftar = devices.filter(d=>d.id !== sekarang).sort((a,b)=>a.nama.localeCompare(b.nama));
+
   $('#salinBody').innerHTML = `
     <label class="text-sm block mb-3">Salin dari device
-      <input id="salinCari" list="salinList" placeholder="ketik nama atau IP…" class="inp font-mono">
-      <datalist id="salinList">${daftar.map(d=>`<option value="${esc(d.nama)}">${esc(d.ip)} · ${esc(d.cluster)}</option>`).join('')}</datalist>
+      <select id="salinPilih" class="inp">
+        <option value="">— pilih device sumber —</option>
+        ${daftar.map(d=>`<option value="${esc(d.id)}">${esc(d.nama)} · ${esc(d.ip)} · ${esc(d.cluster)}</option>`).join('')}
+      </select>
     </label>
-    <div class="grid gap-2 mb-4">
-      ${Object.entries(KELOMPOK_SALIN).map(([k,v])=>`
-        <label class="flex items-start gap-2 text-sm cursor-pointer p-2 rounded-lg border border-line hover:border-cyan2">
-          <input type="checkbox" class="salinGrup w-4 h-4 mt-0.5" value="${k}" ${k==='spesifikasi'||k==='cakupan'?'checked':''}>
-          <span><span class="text-white font-semibold">${v.label}</span>
-            <span class="block text-xs text-slate-500">${v.sub}</span></span>
-        </label>`).join('')}
-    </div>
+    <div id="salinGrupKotak" class="grid gap-2 mb-3"></div>
+    <label class="flex items-center gap-2 text-sm mb-3 cursor-pointer">
+      <input id="salinTimpa" type="checkbox" class="w-4 h-4">
+      <span>Timpa juga field yang sudah terisi di form ini</span>
+    </label>
     <p class="text-xs text-slate-500 mb-4 leading-relaxed">
       Tidak pernah ikut tersalin: IP, nama, serial number, MAC address, koordinat, arah hadap, foto, dan status — semuanya unik per unit.
     </p>
-    <div id="salinPratinjau" class="text-xs text-slate-500 mb-4"></div>
     <div class="flex justify-end gap-2 pt-3 border-t border-line">
       <button id="salinBatal" class="px-4 py-2 rounded border border-line text-sm">Batal</button>
       <button id="salinTerap" class="px-4 py-2 rounded bg-cyan2 text-ink-900 font-bold text-sm">Terapkan ke form</button>
     </div>`;
   $('#salin').hidden = false;
-  setTimeout(()=>$('#salinCari').focus(), 30);
 
-  const cari = () => devices.find(d=>d.nama === $('#salinCari').value.trim())
-              || devices.find(d=>d.ip === $('#salinCari').value.trim());
-  $('#salinCari').addEventListener('input', ()=>{
-    const d = cari();
-    $('#salinPratinjau').innerHTML = d
-      ? `Sumber: <span class="text-white">${esc(d.nama)}</span> · ${esc(d.ip)} · ${esc(d.brand||'tanpa brand')} ${esc(d.seri||'')} · ${esc(d.cluster)}`
-      : '';
-  });
+  const sumber = () => devices.find(x=>x.id === $('#salinPilih').value);
+
+  /* Isi sumber ditampilkan sebelum tombol ditekan, lengkap dengan nilainya.
+     Kelompok yang kosong di sumber dimatikan, jadi tidak mungkin lagi menekan
+     Terapkan lalu dapat "0 field disalin" tanpa tahu sebabnya. */
+  function gambarGrup(){
+    const d = sumber();
+    $('#salinGrupKotak').innerHTML = Object.entries(KELOMPOK_SALIN).map(([k,v])=>{
+      const isi = v.field.filter(f=>!TAK_DISALIN.includes(f) && adaIsi(d?.[f]));
+      const kosong = !d || !isi.length;
+      const contoh = isi.slice(0,4).map(f=>`${f}: ${esc(String(d[f]).slice(0,22))}`).join(' · ');
+      return `<label class="flex items-start gap-2 text-sm p-2 rounded-lg border ${kosong?'border-line opacity-50 cursor-not-allowed':'border-line hover:border-cyan2 cursor-pointer'}">
+        <input type="checkbox" class="salinGrup w-4 h-4 mt-0.5" value="${k}"
+          ${kosong?'disabled':''} ${(!kosong && (k==='spesifikasi'||k==='cakupan'))?'checked':''}>
+        <span class="min-w-0">
+          <span class="text-white font-semibold">${v.label}</span>
+          <span class="text-xs ${kosong?'text-maint':'text-on'}"> — ${d ? (isi.length ? isi.length+' field terisi' : 'kosong di sumber') : 'pilih sumber dulu'}</span>
+          <span class="block text-xs text-slate-500 truncate">${contoh || v.sub}</span>
+        </span></label>`;
+    }).join('');
+  }
+  gambarGrup();
+  $('#salinPilih').addEventListener('change', gambarGrup);
+
   $('#salinBatal').addEventListener('click', ()=>$('#salin').hidden = true);
   $('#salinTerap').addEventListener('click', ()=>{
-    const d = cari();
+    const d = sumber();
     if(!d){ toast('Pilih dulu device sumbernya.','err'); return; }
     const grup = [...document.querySelectorAll('.salinGrup:checked')].map(x=>x.value);
     if(!grup.length){ toast('Pilih minimal satu kelompok yang mau disalin.','err'); return; }
-    let jml = 0;
+    const timpa = $('#salinTimpa').checked;
+
+    const terisi = [], dilewati = [], gagal = [];
     grup.forEach(g=>KELOMPOK_SALIN[g].field.forEach(k=>{
       if(TAK_DISALIN.includes(k)) return;
-      if(d[k] !== undefined && d[k] !== null && d[k] !== ''){ isiField(k, d[k]); jml++; }
+      if(!adaIsi(d[k])) return;
+      const el = document.getElementById(FIELD_INPUT[k] || ('f_'+k.toLowerCase()));
+      if(!el){ gagal.push(k); return; }
+      if(!timpa && adaIsi(el.value)){ dilewati.push(k); return; }
+      el.value = d[k];
+      terisi.push(k);
     }));
-    $('#salin').hidden = true;
-    toast(`${jml} field disalin dari ${d.nama}. Periksa lalu tekan Simpan.`);
-  });
-  lucide.createIcons();
-}
+    if(k_nvr(grup, d)) terisi.push('nvrId');
 
+    $('#salin').hidden = true;
+    if(!terisi.length){
+      toast(dilewati.length
+        ? `Tidak ada yang disalin: ${dilewati.length} field di form sudah terisi. Centang "Timpa" kalau mau diganti.`
+        : `Tidak ada yang disalin — ${d.nama} kosong pada kelompok itu.`, 'warn');
+      return;
+    }
+    toast(`${terisi.length} field disalin dari ${d.nama}${dilewati.length?`, ${dilewati.length} dilewati karena sudah terisi`:''}${gagal.length?`, ${gagal.length} gagal`:''}. Periksa lalu tekan Simpan.`,
+      gagal.length?'warn':'ok');
+  });
+
+  /* Menautkan NVR butuh perlakuan khusus karena nilainya berupa id. */
+  function k_nvr(grup, d){
+    if(!grup.includes('perekaman') || !d.nvrId) return false;
+    const el = $('#f_nvrid');
+    if(!el) return false;
+    el.value = d.nvrId;
+    return el.value === d.nvrId;
+  }
+}
 /* ---- Duplikat: form baru berisi salinan device ini ---- */
 function duplikatDevice(id){
   const d = devices.find(x=>x.id===id); if(!d) return;
