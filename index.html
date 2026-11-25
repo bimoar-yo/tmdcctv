@@ -6,9 +6,6 @@
 <title>CCTV TMD — Monitoring CCTV &amp; Database IP</title>
 
 <script src="https://cdn.tailwindcss.com"></script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -330,6 +327,7 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
             <div id="modeLabel" class="mt-0.5"></div>
           </div>
           <button id="btnImport" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="upload" class="w-4 h-4 text-cyan2"></i> Impor CSV</button>
+          <button id="btnTautNvr" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="link-2" class="w-4 h-4 text-cyan2"></i> Tautkan NVR otomatis</button>
           <button id="btnThumb" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="image-minus" class="w-4 h-4 text-cyan2"></i> Buat thumbnail foto lama</button>
           <button id="btnKatalog" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="book-marked" class="w-4 h-4 text-cyan2"></i> Katalog spesifikasi</button>
           <button id="btnPeta" class="w-full text-left px-3 py-2 hover:bg-ink-600 flex items-center gap-2"><i data-lucide="map-pinned" class="w-4 h-4 text-cyan2"></i> Impor dari Peta Pandang</button>
@@ -349,11 +347,7 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
 </header>
 
 <div class="px-3 md:px-5 py-2.5 border-b border-line bg-ink-900/70 flex flex-wrap items-center gap-2">
-  <select id="fCluster" aria-label="Filter cluster" class="bg-ink-700 border border-line rounded px-2.5 py-1.5 text-sm"></select>
-  <select id="fZona"    aria-label="Filter zona"    class="bg-ink-700 border border-line rounded px-2.5 py-1.5 text-sm"></select>
-  <select id="fBrand"   aria-label="Filter brand"   class="bg-ink-700 border border-line rounded px-2.5 py-1.5 text-sm"></select>
-  <select id="fStatus"  aria-label="Filter status"  class="bg-ink-700 border border-line rounded px-2.5 py-1.5 text-sm"></select>
-  <select id="fNvr"     aria-label="Filter NVR"     class="bg-ink-700 border border-line rounded px-2.5 py-1.5 text-sm"></select>
+  <div id="barisFilter" class="flex flex-wrap items-center gap-2"></div>
   <button id="fShared" class="px-2.5 py-1.5 text-sm rounded border border-line flex items-center gap-1.5"><i data-lucide="link-2" class="w-3.5 h-3.5"></i> IP bersama</button>
   <button id="fReset" class="px-2.5 py-1.5 text-sm rounded border border-line text-slate-400 hover:text-cyan2 hover:border-cyan2 flex items-center gap-1.5"><i data-lucide="filter-x" class="w-3.5 h-3.5"></i> Bersihkan filter</button>
   <span id="filterCount" class="text-sm text-slate-500 font-mono"></span>
@@ -751,6 +745,77 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
 <div id="toast" class="fixed bottom-4 right-4 z-[2000] space-y-2"></div>
 
 <script>
+
+/* ============================ IKON ============================
+   Dulu halaman mengunduh seluruh pustaka ikon (±1 MB) hanya untuk memakai
+   44 ikon. Sekarang ke-44 ikon itu ditanam langsung di file ini (±8 KB).
+   Nama lucide.createIcons dipertahankan supaya kode lama tetap berjalan. */
+const IKON = {
+  'activity':'<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />',
+  'book-marked':'<path d="M10 2v7.751a.25.25 0 00.407.195l2.28-1.834a.5.5 0 01.627 0l2.28 1.834A.25.25 0 0016 9.751V2" /> <path d="M4 19.5v-15A2.5 2.5 0 016.5 2H19a1 1 0 011 1v18a1 1 0 01-1 1H6.5a1 1 0 010-5H20" />',
+  'bookmark-plus':'<path d="M12 7v6" /> <path d="M15 10H9" /> <path d="M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z" />',
+  'cctv':'<path d="M16.75 12h3.632a1 1 0 0 1 .894 1.447l-2.034 4.069a1 1 0 0 1-1.708.134l-2.124-2.97" /> <path d="M17.106 9.053a1 1 0 0 1 .447 1.341l-3.106 6.211a1 1 0 0 1-1.342.447L3.61 12.3a2.92 2.92 0 0 1-1.3-3.91L3.69 5.6a2.92 2.92 0 0 1 3.92-1.3z" /> <path d="M2 19h3.76a2 2 0 0 0 1.8-1.1L9 15" /> <path d="M2 21v-4" /> <path d="M7 9h.01" />',
+  'clipboard-check':'<rect width="8" height="4" x="8" y="2" rx="1" ry="1" /> <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /> <path d="m9 14 2 2 4-4" />',
+  'cone':'<path d="m20.9 18.55-8-15.98a1 1 0 0 0-1.8 0l-8 15.98" /> <ellipse cx="12" cy="19" rx="9" ry="3" />',
+  'copy':'<rect width="14" height="14" x="8" y="8" rx="2" ry="2" /> <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />',
+  'download':'<path d="M12 15V3" /> <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /> <path d="m7 10 5 5 5-5" />',
+  'external-link':'<path d="M15 3h6v6" /> <path d="M10 14 21 3" /> <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />',
+  'file-down':'<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" /> <path d="M14 2v5a1 1 0 0 0 1 1h5" /> <path d="M12 18v-6" /> <path d="m9 15 3 3 3-3" />',
+  'filter-x':'<path d="M12.531 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14v6a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341l.427-.473" /> <path d="m16.5 3.5 5 5" /> <path d="m21.5 3.5-5 5" />',
+  'folder-open':'<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />',
+  'history':'<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /> <path d="M3 3v5h5" /> <path d="M12 7v5l4 2" />',
+  'image':'<rect width="18" height="18" x="3" y="3" rx="2" ry="2" /> <circle cx="9" cy="9" r="2" /> <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />',
+  'image-minus':'<path d="M21 9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7" /> <line x1="16" x2="22" y1="5" y2="5" /> <circle cx="9" cy="9" r="2" /> <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />',
+  'layers':'<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z" /> <path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12" /> <path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17" />',
+  'layers-2':'<path d="M13 13.74a2 2 0 0 1-2 0L2.5 8.87a1 1 0 0 1 0-1.74L11 2.26a2 2 0 0 1 2 0l8.5 4.87a1 1 0 0 1 0 1.74z" /> <path d="m20 14.285 1.5.845a1 1 0 0 1 0 1.74L13 21.74a2 2 0 0 1-2 0l-8.5-4.87a1 1 0 0 1 0-1.74l1.5-.845" />',
+  'layout-grid':'<rect width="7" height="7" x="3" y="3" rx="1" /> <rect width="7" height="7" x="14" y="3" rx="1" /> <rect width="7" height="7" x="14" y="14" rx="1" /> <rect width="7" height="7" x="3" y="14" rx="1" />',
+  'link-2':'<path d="M9 17H7A5 5 0 0 1 7 7h2" /> <path d="M15 7h2a5 5 0 1 1 0 10h-2" /> <line x1="8" x2="16" y1="12" y2="12" />',
+  'list-checks':'<path d="M13 5h8" /> <path d="M13 12h8" /> <path d="M13 19h8" /> <path d="m3 17 2 2 4-4" /> <path d="m3 7 2 2 4-4" />',
+  'list-ordered':'<path d="M11 5h10" /> <path d="M11 12h10" /> <path d="M11 19h10" /> <path d="M4 4h1v5" /> <path d="M4 9h2" /> <path d="M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02" />',
+  'loader':'<path d="M12 2v4" /> <path d="m16.2 7.8 2.9-2.9" /> <path d="M18 12h4" /> <path d="m16.2 16.2 2.9 2.9" /> <path d="M12 18v4" /> <path d="m4.9 19.1 2.9-2.9" /> <path d="M2 12h4" /> <path d="m4.9 4.9 2.9 2.9" />',
+  'log-out':'<path d="m16 17 5-5-5-5" /> <path d="M21 12H9" /> <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />',
+  'map-pin':'<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" /> <circle cx="12" cy="10" r="3" />',
+  'map-pinned':'<path d="M18 8c0 3.613-3.869 7.429-5.393 8.795a1 1 0 01-1.214 0C9.87 15.429 6 11.613 6 8a6 6 0 0112 0" /> <path d="M4.474 15h-.197a1 1 0 00-.969.753l-1.097 4.35a1.5 1.5 0 001.444 1.898L20.344 22a1.5 1.5 0 001.446-1.897l-1.098-4.35a1 1 0 00-.969-.753h-.197" /> <circle cx="12" cy="8" r="2" />',
+  'maximize':'<path d="M8 3H5a2 2 0 0 0-2 2v3" /> <path d="M21 8V5a2 2 0 0 0-2-2h-3" /> <path d="M3 16v3a2 2 0 0 0 2 2h3" /> <path d="M16 21h3a2 2 0 0 0 2-2v-3" />',
+  'moon':'<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />',
+  'more-vertical':'<circle cx="12" cy="12" r="1" /> <circle cx="12" cy="5" r="1" /> <circle cx="12" cy="19" r="1" />',
+  'move':'<path d="M12 2v20" /> <path d="m15 19-3 3-3-3" /> <path d="m19 9 3 3-3 3" /> <path d="M2 12h20" /> <path d="m5 9-3 3 3 3" /> <path d="m9 5 3-3 3 3" />',
+  'network':'<rect x="16" y="16" width="6" height="6" rx="1" /> <rect x="2" y="16" width="6" height="6" rx="1" /> <rect x="9" y="2" width="6" height="6" rx="1" /> <path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3" /> <path d="M12 12V8" />',
+  'plus':'<path d="M5 12h14" /> <path d="M12 5v14" />',
+  'radio-tower':'<path d="M4.9 16.1C1 12.2 1 5.8 4.9 1.9" /> <path d="M7.8 4.7a6.14 6.14 0 0 0-.8 7.5" /> <circle cx="12" cy="9" r="2" /> <path d="M16.2 4.8c2 2 2.26 5.11.8 7.47" /> <path d="M19.1 1.9a9.96 9.96 0 0 1 0 14.1" /> <path d="M9.5 18h5" /> <path d="m8 22 4-11 4 11" />',
+  'refresh-cw':'<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /> <path d="M21 3v5h-5" /> <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /> <path d="M8 16H3v5" />',
+  'save':'<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /> <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /> <path d="M7 3v4a1 1 0 0 0 1 1h7" />',
+  'scan-search':'<path d="M3 7V5a2 2 0 0 1 2-2h2" /> <path d="M17 3h2a2 2 0 0 1 2 2v2" /> <path d="M21 17v2a2 2 0 0 1-2 2h-2" /> <path d="M7 21H5a2 2 0 0 1-2-2v-2" /> <circle cx="12" cy="12" r="3" /> <path d="m16 16-1.9-1.9" />',
+  'search':'<path d="m21 21-4.34-4.34" /> <circle cx="11" cy="11" r="8" />',
+  'settings-2':'<path d="M14 17H5" /> <path d="M19 7h-9" /> <circle cx="17" cy="17" r="3" /> <circle cx="7" cy="7" r="3" />',
+  'table-2':'<path d="M3 9h18" /> <path d="M9 3v18" /> <rect x="3" y="3" width="18" height="18" rx="2" />',
+  'trash-2':'<path d="M10 11v6" /> <path d="M14 11v6" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M3 6h18" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />',
+  'undo-2':'<path d="M9 14 4 9l5-5" /> <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" />',
+  'upload':'<path d="M12 3v12" /> <path d="m17 8-5-5-5 5" /> <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />',
+  'upload-cloud':'<path d="M12 13v8" /> <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" /> <path d="m8 17 4-4 4 4" />',
+  'users':'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /> <path d="M16 3.128a4 4 0 0 1 0 7.744" /> <path d="M22 21v-2a4 4 0 0 0-3-3.87" /> <circle cx="9" cy="7" r="4" />',
+  'x':'<path d="M18 6 6 18" /> <path d="m6 6 12 12" />'
+};
+const lucide = {
+  createIcons(){
+    document.querySelectorAll('[data-lucide]').forEach(el=>{
+      const isi = IKON[el.getAttribute('data-lucide')];
+      if(!isi) return;
+      const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.setAttribute('viewBox','0 0 24 24');
+      svg.setAttribute('fill','none');
+      svg.setAttribute('stroke','currentColor');
+      svg.setAttribute('stroke-width','2');
+      svg.setAttribute('stroke-linecap','round');
+      svg.setAttribute('stroke-linejoin','round');
+      svg.setAttribute('aria-hidden','true');
+      svg.setAttribute('class', el.getAttribute('class') || '');
+      svg.innerHTML = isi;
+      el.replaceWith(svg);
+    });
+  }
+};
+
 /* ============================ UTIL ============================ */
 const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -810,9 +875,10 @@ const fromRow = r => ({ id:r.id, nama:r.nama, ip:r.ip, portHttp:r.port_http, por
   jangkauan: r.jangkauan_m ? +r.jangkauan_m : 35,
   doriD: r.dori_d ? +r.dori_d : null, doriO: r.dori_o ? +r.dori_o : null,
   doriR: r.dori_r ? +r.dori_r : null, doriI: r.dori_i ? +r.dori_i : null,
+  foto: r.foto,                       // undefined = belum diambil dari server
   fotoThumb: r.foto_thumb || null,
   nvrId: r.nvr_id || '', nvrNama: r.nvr_nama || '', nvrIp: r.nvr_ip || '', nvrChannel: r.nvr_channel || '' });
-const toRow = d => ({ id:d.id, nama:d.nama, ip:d.ip, port_http:d.portHttp, port_rtsp:d.portRtsp,
+const toRow = d => bersihkanRow({ id:d.id, nama:d.nama, ip:d.ip, port_http:d.portHttp, port_rtsp:d.portRtsp,
   brand:d.brand, kategori:d.kategori, cluster:d.cluster, zona:d.zona, status:d.status,
   ip_status:d.ipStatus, lat:d.lat===''?null:+d.lat, lng:d.lng===''?null:+d.lng, foto:d.foto,
   seri:d.seri||null, tipe_kamera:d.tipeKamera||null, resolusi:d.resolusi||null, lensa_mm:d.lensa||null,
@@ -828,8 +894,20 @@ const toRow = d => ({ id:d.id, nama:d.nama, ip:d.ip, port_http:d.portHttp, port_
   foto_thumb: d.fotoThumb || null,
   nvr_id: d.nvrId || null, nvr_nama: d.nvrNama || null,
   nvr_ip: d.nvrIp || null, nvr_channel: d.nvrChannel || null });
+/* Kunci bernilai undefined berarti "belum diambil dari server" — jangan
+   dikirim, supaya menyimpan device tidak menghapus foto yang sudah ada. */
+function bersihkanRow(r){
+  Object.keys(r).forEach(k=>{ if(r[k] === undefined) delete r[k]; });
+  return r;
+}
 
 const BUCKET = 'cctv-foto';
+/* Semua kolom kecuali `foto` (yang bisa sangat besar untuk data lama). */
+const KOLOM_DAFTAR = ['id','nama','ip','port_http','port_rtsp','brand','kategori','cluster','zona',
+  'status','ip_status','lat','lng','foto_thumb','seri','tipe_kamera','resolusi','lensa_mm','ir_m',
+  'fitur','serial_number','mac','firmware','daya','tgl_pasang','garansi_sampai','catatan',
+  'ip_bersama_ok','ip_bersama_oleh','arah_derajat','fov_derajat','jangkauan_m',
+  'dori_d','dori_o','dori_r','dori_i','nvr_id','nvr_nama','nvr_ip','nvr_channel'].join(',');
 
 /* Foto: di cloud diunggah sebagai file ke Storage, kolom `foto` hanya berisi URL.
    Di mode lokal tetap base64 karena tidak ada tempat lain. */
@@ -867,11 +945,20 @@ async function putFoto(d){
 }
 
 const api = {
+  /* Kolom foto bisa berisi data URL base64 dari impor lama — ratusan KB per
+     baris. Daftar hanya butuh thumbnail, jadi kolom foto tidak ikut ditarik;
+     gambar penuh diambil saat panel Detail atau form dibuka. */
   async list(){
     if(!CLOUD){ try{ return JSON.parse(localStorage.getItem(localKey())||'[]'); }catch{ return []; } }
-    const { data, error } = await sb.from('devices').select('*').order('ip');
+    const { data, error } = await sb.from('devices').select(KOLOM_DAFTAR).order('ip');
     if(error) throw error;
     return (data||[]).map(fromRow);
+  },
+  async fotoPenuh(id){
+    if(!CLOUD) return devices.find(d=>d.id===id)?.foto || null;
+    const { data, error } = await sb.from('devices').select('foto').eq('id', id).maybeSingle();
+    if(error) throw error;
+    return data?.foto || null;
   },
   async upsert(d){
     if(!CLOUD){ const i = devices.findIndex(x=>x.id===d.id); i>-1?devices[i]=d:devices.push(d); return saveLocal(); }
@@ -1130,6 +1217,10 @@ async function enterApp(){
   ['btnImport','btnSeed','btnWipe'].forEach(id=>$('#'+id).hidden = !isAdmin());
   logRows = null;
   $('#btnTeam').hidden = !(CLOUD && isAdmin());
+  /* Alamat dibaca sebelum data digambar, jadi refresh langsung membuka
+     halaman yang sama — bukan kembali ke Monitoring. */
+  bacaRute();
+  tulisRute(true);
   await reload();
   await muatKatalog();
   lucide.createIcons();
@@ -1166,6 +1257,7 @@ $('#team').addEventListener('change', async e=>{
 async function logout(){
   if(CLOUD){ await sb.auth.signOut(); simpanToken(null); } else localStorage.removeItem('cctvtmd_session');
   session = null; devices = [];
+  history.replaceState(null,'',location.pathname + location.search);
   $('#app').hidden = true; $('#booting').hidden = true; $('#auth').hidden = false; $('#pending').hidden = true;
   ckRiwayat = null; ck = { items:{}, catatan:{} };
   $('#authForm').reset(); setAuthMode('login');
@@ -1189,7 +1281,10 @@ function seedData(){
 }
 
 /* ============================ STATE & FILTER ============================ */
-let state = { tab:'monitor', view:'grid', q:'', cluster:'', zona:'', brand:'', status:'', nvr:'', shared:false,
+let state = { tab:'monitor', view:'grid', q:'',
+               /* Tiap filter berupa himpunan; kosong berarti semua. */
+               f: { cluster:new Set(), zona:new Set(), brand:new Set(), status:new Set(), nvr:new Set() },
+               shared:false,
                editTabel: localStorage.getItem('cctvtmd_edittabel')==='1',
                cols: localStorage.getItem('cctvtmd_cols') || 'auto', sort:{key:'nama',dir:1} };
 let ck = { items:{}, catatan:{} };   // hasil checklist yang sedang diisi: {deviceId: 'hidup'|'mati'|'maintenance'}
@@ -1207,8 +1302,9 @@ const MAKS_UNDO = 25;
    dan cache dibuang setiap kali state atau data berubah. */
 let cacheFilter = null, cacheKunci = '';
 function filtered(){
-  const kunci = JSON.stringify([state.q,state.cluster,state.zona,state.brand,
-                  state.status,state.nvr,state.shared,devices.length,penandaData]);
+  const F = state.f;
+  const kunci = JSON.stringify([state.q, [...F.cluster], [...F.zona], [...F.brand],
+                  [...F.status], [...F.nvr], state.shared, devices.length, penandaData]);
   if(cacheFilter && cacheKunci === kunci) return cacheFilter;
   cacheKunci = kunci;
   cacheFilter = hitungFilter();
@@ -1220,14 +1316,14 @@ const dataBerubah = () => { penandaData++; cacheFilter = null; };
 function hitungFilter(){
   const q = state.q.trim().toLowerCase();
   return devices.filter(d=>{
-    if(state.cluster && d.cluster!==state.cluster) return false;
-    if(state.zona    && d.zona   !==state.zona)    return false;
-    if(state.brand   && d.brand  !==state.brand)   return false;
-    if(state.status  && d.status !==state.status)  return false;
-    if(state.nvr){
+    const F = state.f;
+    if(F.cluster.size && !F.cluster.has(d.cluster)) return false;
+    if(F.zona.size    && !F.zona.has(d.zona))       return false;
+    if(F.brand.size   && !F.brand.has(d.brand))     return false;
+    if(F.status.size  && !F.status.has(d.status))   return false;
+    if(F.nvr.size){
       const n = nvrDari(d);
-      if(state.nvr === '__kosong'){ if(n) return false; }
-      else if(!n || (n.nama || n.ip) !== state.nvr) return false;
+      if(!F.nvr.has(n ? (n.nama || n.ip) : '__kosong')) return false;
     }
     if(state.shared){
       if((idxJmlIp.get(d.ip)||1) < 2) return false;
@@ -1250,19 +1346,138 @@ function renderStats(){
     ['Arah belum diatur', f.filter(d=>d.lat && d.lng && (d.arah===null||d.arah===undefined)).length, 'text-maint']]
     .map(([l,v,cl])=>`<div class="bg-ink-700 border border-line rounded px-3 py-2 grid-bg"><div class="text-[11px] text-slate-500">${l}</div><div class="text-2xl font-bold font-mono ${cl}">${v}</div></div>`).join('');
 }
+/* ---------- Filter pilihan ganda ----------
+   Tombol + panel centang. Himpunan kosong berarti semua, jadi perilaku
+   bawaannya sama seperti sebelumnya. Jumlah device per pilihan dihitung
+   dengan filter LAIN tetap berlaku, supaya angkanya mencerminkan hasil
+   yang benar-benar akan muncul. */
+const DEF_FILTER = [
+  { k:'cluster', label:'cluster', opsi:()=>uniq('cluster') },
+  { k:'zona',    label:'zona',    opsi:()=>uniq('zona') },
+  { k:'brand',   label:'brand',   opsi:()=>uniq('brand') },
+  { k:'status',  label:'status',  opsi:()=>STATUS },
+  { k:'nvr',     label:'NVR',     tampil:v=>v==='__kosong'?'— NVR belum diisi —':v,
+    opsi:()=>{
+      const n=[...new Set(devices.map(d=>{const x=nvrDari(d);return x?(x.nama||x.ip):null;}).filter(Boolean))];
+      n.sort((a,b)=>kolator.compare(a,b));
+      return [...n,'__kosong'];
+    } }
+];
+const nilaiFilter = (d,k)=> k==='nvr'
+  ? (()=>{ const n=nvrDari(d); return n ? (n.nama||n.ip) : '__kosong'; })()
+  : d[k];
+
 function fillFilters(){
-  const set=(id,label,key,val)=>{ $(id).innerHTML = `<option value="">${label}</option>` +
-    (key==='__status'?STATUS:uniq(key)).map(v=>`<option ${v===val?'selected':''}>${esc(v)}</option>`).join(''); };
-  set('#fCluster','Semua cluster','cluster',state.cluster);
-  set('#fZona','Semua zona','zona',state.zona);
-  set('#fBrand','Semua brand','brand',state.brand);
-  set('#fStatus','Semua status','__status',state.status);
-  const namaNvr = [...new Set(devices.map(d=>{ const n=nvrDari(d); return n ? (n.nama||n.ip) : null; }).filter(Boolean))].sort();
-  $('#fNvr').innerHTML = '<option value="">Semua NVR</option>' +
-    namaNvr.map(v=>`<option ${v===state.nvr?'selected':''}>${esc(v)}</option>`).join('') +
-    `<option value="__kosong" ${state.nvr==='__kosong'?'selected':''}>— NVR belum diisi —</option>`;
+  $('#barisFilter').innerHTML = DEF_FILTER.map(def=>{
+    const pilih = state.f[def.k];
+    const judul = pilih.size===0 ? `Semua ${def.label}`
+                : pilih.size===1 ? (def.tampil?def.tampil([...pilih][0]):[...pilih][0])
+                : `${def.label}: ${pilih.size} dipilih`;
+    return `<div class="relative">
+      <button data-filter="${def.k}" class="flex items-center gap-1.5 rounded border px-2.5 py-1.5 text-sm max-w-[230px] ${
+        pilih.size ? 'bg-cyan2/10 border-cyan2 text-cyan2 font-semibold' : 'bg-ink-700 border-line'}">
+        <span class="truncate">${esc(judul)}</span>
+        <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div data-panel="${def.k}" hidden class="absolute z-[900] mt-1 w-72 bg-ink-800 border border-line rounded-lg shadow-2xl"></div>
+    </div>`;
+  }).join('');
   $('#clusterList').innerHTML = uniq('cluster').map(v=>`<option>${esc(v)}</option>`).join('');
 }
+
+function gambarPanelFilter(k){
+  const def = DEF_FILTER.find(x=>x.k===k);
+  const panel = document.querySelector(`[data-panel="${k}"]`);
+  if(!panel) return;
+  const pilih = state.f[k];
+  const cari = (panel.dataset.cari || '').toLowerCase();
+  const lain = devices.filter(d=>DEF_FILTER.every(x=>{
+    if(x.k===k) return true;
+    const sp = state.f[x.k];
+    return !sp.size || sp.has(nilaiFilter(d,x.k));
+  }));
+  const jumlah = new Map();
+  lain.forEach(d=>{ const v = nilaiFilter(d,k); jumlah.set(v,(jumlah.get(v)||0)+1); });
+  const tampil = v => def.tampil ? def.tampil(v) : String(v);
+  const opsi = def.opsi().filter(v=>!cari || tampil(v).toLowerCase().includes(cari));
+
+  panel.innerHTML = `
+    <div class="p-2 border-b border-line">
+      <input data-caripanel="${k}" value="${esc(panel.dataset.cari||'')}" placeholder="Cari ${esc(def.label)}…"
+        class="w-full bg-ink-700 border border-line rounded px-2 py-1.5 text-sm">
+    </div>
+    <div class="max-h-72 overflow-y-auto py-1">
+      ${opsi.length ? opsi.map(v=>{
+        const n = jumlah.get(v) || 0;
+        return `<label class="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-ink-600 cursor-pointer ${n?'':'opacity-50'}">
+          <input type="checkbox" data-opsi="${k}" value="${esc(v)}" class="w-4 h-4" ${pilih.has(v)?'checked':''}>
+          <span class="flex-1 truncate">${esc(tampil(v))}</span>
+          <span class="text-xs text-slate-500 font-mono">${n}</span></label>`;
+      }).join('') : '<p class="px-3 py-3 text-sm text-slate-500">Tidak ada yang cocok.</p>'}
+    </div>
+    <div class="border-t border-line p-2 flex gap-2">
+      <button data-aksifilter="semua|${k}" class="flex-1 px-2 py-1.5 rounded border border-line text-xs hover:border-cyan2">Pilih semua yang tampil</button>
+      <button data-aksifilter="kosong|${k}" class="flex-1 px-2 py-1.5 rounded border border-line text-xs hover:border-cyan2">Bersihkan</button>
+    </div>`;
+}
+
+/* Panel dibuka ulang setelah render supaya tetap terbuka saat mencentang. */
+function segarkanPanel(k, cariLama){
+  const p2 = document.querySelector(`[data-panel="${k}"]`);
+  if(!p2) return;
+  p2.dataset.cari = cariLama || '';
+  gambarPanelFilter(k);
+  p2.hidden = false;
+}
+
+document.addEventListener('click', e=>{
+  const b = e.target.closest('[data-filter]');
+  if(b){
+    const k = b.dataset.filter;
+    const panel = document.querySelector(`[data-panel="${k}"]`);
+    const buka = panel.hidden;
+    document.querySelectorAll('[data-panel]').forEach(x=>x.hidden = true);
+    if(buka){ gambarPanelFilter(k); panel.hidden = false;
+      setTimeout(()=>panel.querySelector('[data-caripanel]')?.focus(), 20); }
+    return;
+  }
+  const a = e.target.closest('[data-aksifilter]');
+  if(a){
+    const [aksi,k] = a.dataset.aksifilter.split('|');
+    const def = DEF_FILTER.find(x=>x.k===k);
+    const panel = document.querySelector(`[data-panel="${k}"]`);
+    const cari = (panel.dataset.cari||'').toLowerCase();
+    const tampil = v => def.tampil ? def.tampil(v) : String(v);
+    if(aksi==='kosong') state.f[k].clear();
+    else def.opsi().filter(v=>!cari || tampil(v).toLowerCase().includes(cari)).forEach(v=>state.f[k].add(v));
+    const simpan = panel.dataset.cari;
+    render(); segarkanPanel(k, simpan);
+    return;
+  }
+  if(!e.target.closest('[data-panel]')) document.querySelectorAll('[data-panel]').forEach(x=>x.hidden = true);
+});
+
+document.addEventListener('change', e=>{
+  const c = e.target.closest('[data-opsi]');
+  if(!c) return;
+  const k = c.dataset.opsi;
+  c.checked ? state.f[k].add(c.value) : state.f[k].delete(c.value);
+  const simpan = document.querySelector(`[data-panel="${k}"]`)?.dataset.cari || '';
+  render(); segarkanPanel(k, simpan);
+});
+
+document.addEventListener('input', e=>{
+  const c = e.target.closest('[data-caripanel]');
+  if(!c) return;
+  const k = c.dataset.caripanel;
+  const panel = document.querySelector(`[data-panel="${k}"]`);
+  const pos = c.selectionStart;
+  panel.dataset.cari = c.value;
+  gambarPanelFilter(k);
+  const baru = panel.querySelector('[data-caripanel]');
+  if(baru){ baru.focus(); baru.setSelectionRange(pos,pos); }
+});
+
 function thumb(d,cls){
   const kecil = d.fotoThumb || d.foto;   // thumbnail dulu; gambar penuh hanya di panel Detail
   return kecil ? `<img src="${esc(kecil)}" alt="View ${esc(d.nama)}" loading="lazy" decoding="async" class="${cls} object-cover">`
@@ -1366,7 +1581,7 @@ const KOLOM_TABEL = [
   { k:'cluster',   l:'Cluster',        baku:true,  sel:(d,E)=>`<td class="p-1.5">${E?inp(d,'cluster'):esc(d.cluster)}</td>` },
   { k:'zona',      l:'Zona',           baku:true,  sel:(d,E)=>`<td class="p-1.5">${E?inp(d,'zona'):esc(d.zona)}</td>` },
   { k:'nvr',       l:'NVR perekam',    baku:true,  sel:(d,E)=>{
-      if(E) return `<td class="p-1.5 text-xs">${selId(d,'nvrId',daftarNvr())}</td>`;
+      if(E) return `<td class="p-1.5 text-xs">${selId({...d, nvrId: nvrIdEfektif(d)},'nvrId',daftarNvr())}</td>`;
       const n=nvrDari(d);
       return `<td class="p-1.5 text-xs">${n
         ? `<span class="text-slate-300">${esc(n.nama||n.ip)}</span>${n.ip&&n.nama?`<span class="text-slate-500 font-mono block">${esc(n.ip)}</span>`:''}`
@@ -1605,6 +1820,23 @@ function gambarCorong(d, layer){
   });
 }
 
+/* Leaflet (±160 KB) baru diunduh saat tab Peta pertama kali dibuka. */
+let muatLeaflet = null;
+function siapkanLeaflet(){
+  if(window.L) return Promise.resolve();
+  if(muatLeaflet) return muatLeaflet;
+  muatLeaflet = new Promise((res, rej)=>{
+    const css = document.createElement('link');
+    css.rel='stylesheet'; css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(css);
+    const js = document.createElement('script');
+    js.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    js.onload=res; js.onerror=()=>rej(new Error('Leaflet gagal dimuat'));
+    document.head.appendChild(js);
+  });
+  return muatLeaflet;
+}
+
 function initMap(){
   if(map) return;
   /* preferCanvas: ratusan corong digambar di satu kanvas, bukan ratusan
@@ -1621,7 +1853,13 @@ function initMap(){
     zumLalu = z;
   });
 }
-function renderMap(){
+async function renderMap(){
+  if(!window.L){
+    $('#map').innerHTML = '<div class="h-full grid place-items-center text-slate-500 text-sm">Memuat peta…</div>';
+    try{ await siapkanLeaflet(); }
+    catch(e){ $('#map').innerHTML = '<div class="h-full grid place-items-center text-off text-sm">Peta gagal dimuat. Periksa koneksi internet.</div>'; return; }
+    $('#map').innerHTML = '';
+  }
   initMap(); markerLayer.clearLayers();
   const pts = [];
   filtered().filter(d=>d.lat!=='' && d.lng!=='' && Number.isFinite(+d.lat) && Number.isFinite(+d.lng)).forEach(d=>{
@@ -1734,7 +1972,9 @@ function scanFree(seg){
     <div class="max-h-72 overflow-y-auto grid grid-cols-2 gap-1.5 pr-1">${show.map(h=>`<button data-useip="${seg}.${h}" class="useip text-left font-mono text-xs px-2 py-1.5 rounded bg-ink-700 border border-line hover:border-cyan2 hover:text-cyan2">${seg}.${h}</button>`).join('')}</div>
     ${free.length>show.length?`<p class="text-xs text-slate-500 mt-2">Menampilkan ${show.length} pertama dari ${free.length}.</p>`:''}`;
 }
+const JUDUL = { monitor:'Monitoring CCTV', ipdb:'Database IP', check:'Checklist harian', log:'Riwayat perubahan' };
 function render(){
+  document.title = `${JUDUL[state.tab] || ''} — CCTV TMD`;
   bangunIndeks();
   fillFilters(); renderStats();
   $('#filterCount').textContent = `${filtered().length} dari ${devices.length} device`;
@@ -1863,6 +2103,39 @@ $$('.col-btn').forEach(b=>b.addEventListener('click', ()=>{
   state.cols = b.dataset.cols; localStorage.setItem('cctvtmd_cols', state.cols); render();
 }));
 addEventListener('resize', ()=>{ if(state.tab==='monitor' && state.view==='grid') terapkanKolom(); });
+
+/* ============================ TAUTKAN NVR OTOMATIS ============================
+   Mencocokkan IP NVR yang tercatat sebagai teks dengan device berkategori
+   NVR yang punya IP sama, lalu membuat tautannya. Setelah ini, mengganti
+   nama atau IP NVR cukup dilakukan di satu baris. */
+$('#btnTautNvr').addEventListener('click', async ()=>{
+  if(!canEdit()){ toast('Peran Anda tidak boleh mengubah data.','err'); return; }
+  const perlu = devices.filter(d=>!d.nvrId && d.nvrIp && idxNvrIp.get(d.nvrIp));
+  const yatim = devices.filter(d=>!d.nvrId && d.nvrIp && !idxNvrIp.get(d.nvrIp));
+  if(!perlu.length){
+    toast(yatim.length
+      ? `Tidak ada yang bisa ditautkan. ${yatim.length} kamera menyebut IP NVR yang belum terdaftar sebagai device.`
+      : 'Semua kamera sudah tertaut ke NVR-nya.', yatim.length?'warn':'ok');
+    return;
+  }
+  const ringkas = [...new Set(perlu.map(d=>d.nvrIp))].map(ip=>{
+    const n = idxNvrIp.get(ip);
+    return `• ${n.nama} (${ip}) — ${perlu.filter(x=>x.nvrIp===ip).length} kamera`;
+  }).join('\n');
+  if(!confirm(`Tautkan ${perlu.length} kamera ke NVR-nya?\n\n${ringkas}\n\nSetelah tertaut, nama dan IP NVR cukup diubah di baris NVR-nya saja.`)) return;
+
+  let ok=0, gagal=0;
+  for(const d of perlu){
+    const n = idxNvrIp.get(d.nvrIp);
+    try{
+      await api.patch(d.id, { nvr_id:n.id, nvr_nama:n.nama, nvr_ip:n.ip });
+      d.nvrId = n.id; d.nvrNama = n.nama; d.nvrIp = n.ip; ok++;
+    }catch(err){ gagal++; console.error(d.nama, err); }
+  }
+  bangunIndeks(); render();
+  toast(`${ok} kamera ditautkan${gagal?`, ${gagal} gagal`:''}${yatim.length?`. ${yatim.length} menyebut IP NVR yang belum terdaftar.`:'.'}`,
+    (gagal||yatim.length)?'warn':'ok');
+});
 
 /* ============================ KONVERSI THUMBNAIL ============================ */
 /* Foto yang diunggah sebelum v23 hanya punya satu ukuran. Alat ini mengunduh
@@ -2370,13 +2643,23 @@ $('#f_nvrid').addEventListener('change', e=>{
 
 /* Yang ditampilkan: utamakan baris NVR yang ditaut, jatuh ke teks manual
    kalau tautannya kosong atau baris NVR-nya sudah terhapus. */
+/* Urutan penentuan NVR:
+   1. tautan resmi (nvr_id)
+   2. kalau belum tertaut, cocokkan IP manual dengan device NVR yang ada —
+      sehingga mengganti nama NVR langsung terlihat di semua kamera,
+      walaupun tautannya belum dibuat
+   3. terakhir, teks manual apa adanya */
 function nvrDari(d){
-  const n = d.nvrId ? idxById.get(d.nvrId) : null;
+  const resmi  = d.nvrId ? idxById.get(d.nvrId) : null;
+  const serupa = !resmi && d.nvrIp ? idxNvrIp.get(d.nvrIp) : null;
+  const n = resmi || serupa;
   const nama = n?.nama || d.nvrNama || '';
   const ip   = n?.ip   || d.nvrIp   || '';
   if(!nama && !ip) return null;
-  return { nama, ip, channel:d.nvrChannel, tertaut: !!n };
+  return { nama, ip, channel:d.nvrChannel, tertaut: !!resmi, cocokIp: !!serupa, device:n };
 }
+/* Id yang dipakai dropdown: tautan resmi, atau hasil pencocokan IP. */
+const nvrIdEfektif = d => d.nvrId || (d.nvrIp ? idxNvrIp.get(d.nvrIp)?.id : '') || '';
 
 /* ============================ SALIN & DUPLIKAT ============================ */
 /* Field dikelompokkan supaya penyalinan bisa dipilih per bagian.
@@ -2575,11 +2858,14 @@ const SVG = (()=>{
 let idxJmlIp = new Map();     // ip -> jumlah device
 let idxNamaIp = new Map();    // ip -> daftar nama
 let idxById = new Map();      // id -> device
+let idxNvrIp = new Map();     // ip -> device berkategori NVR/Server
 function bangunIndeks(){
   cacheFilter = null;
   idxJmlIp = new Map(); idxNamaIp = new Map(); idxById = new Map();
+  idxNvrIp = new Map();
   for(const d of devices){
     idxById.set(d.id, d);
+    if(['NVR','Server'].includes(d.kategori) && d.ip) idxNvrIp.set(d.ip, d);
     idxJmlIp.set(d.ip, (idxJmlIp.get(d.ip)||0) + 1);
     const n = idxNamaIp.get(d.ip); n ? n.push(d.nama) : idxNamaIp.set(d.ip, [d.nama]);
   }
@@ -2627,7 +2913,7 @@ function openDetail(id){
   $('#detailBody').innerHTML = `
     <div class="grid gap-4 md:grid-cols-[260px_1fr]">
       <div>
-        ${d.foto ? `<img src="${esc(d.foto)}" alt="View ${esc(d.nama)}" class="w-full rounded border border-line">`
+        ${(d.foto || d.fotoThumb) ? `<img id="fotoDetail" src="${esc(d.foto || d.fotoThumb)}" alt="View ${esc(d.nama)}" class="w-full rounded border border-line">`
                  : `<div class="w-full h-40 rounded border border-dashed border-line grid place-items-center text-slate-600 text-xs">belum ada foto view</div>`}
         <div class="mt-3 space-y-1 text-sm">
           <div class="font-mono">${ipLink(d)}</div>
@@ -2636,7 +2922,9 @@ function openDetail(id){
                <div class="text-slate-500">Direkam di</div>
                <div class="text-white font-semibold">${esc(n.nama||'—')}${n.channel?` · channel ${esc(n.channel)}`:''}</div>
                ${n.ip?`<a href="http://${esc(n.ip)}" target="_blank" rel="noopener noreferrer" class="ip-link font-mono">${esc(n.ip)}</a>`:''}
-               ${n.tertaut?'':'<span class="text-maint"> · dicatat manual, belum ditautkan</span>'}
+               ${n.tertaut ? '' : n.cocokIp
+                  ? '<span class="text-cyan2"> · dikenali dari IP, belum ditautkan resmi</span>'
+                  : '<span class="text-maint"> · dicatat manual, belum ditautkan</span>'}
              </div>`
           : `<div class="text-xs mt-2 text-maint">NVR perekam belum diisi.</div>`; })()}
         ${punyaDori(d)?`<div class="text-xs mt-1.5 text-slate-400">Cakupan: D ${d.doriD||'—'} · O ${d.doriO||'—'} · R ${d.doriR||'—'} · <span class="text-on">I ${d.doriI||'—'}</span> m${d.arah!==null&&d.arah!==undefined?` · menghadap ${namaArah(d.arah)} ${Math.round(d.arah)}°`:''}</div>`:''}
@@ -2670,6 +2958,13 @@ function openDetail(id){
     </div>`;
   $('#detail').hidden = false;
   lucide.createIcons();
+  /* Gambar penuh diambil belakangan supaya panel langsung terbuka. */
+  if(d.foto === undefined && d.fotoThumb){
+    api.fotoPenuh(d.id).then(f=>{
+      if(f) { d.foto = f; const img = $('#fotoDetail'); if(img) img.src = f; }
+      else d.foto = null;
+    }).catch(()=>{});
+  }
 }
 const closeDetail = () => $('#detail').hidden = true;
 $('#detailClose').addEventListener('click', closeDetail);
@@ -2698,7 +2993,7 @@ function openForm(id, prefillIp){
   $('#f_fov').value = d?.fov ?? 75;
   $('#f_jangkauan').value = d?.jangkauan ?? 35;
   isiDropdownNvr(d?.id);
-  $('#f_nvrid').value = d?.nvrId || '';
+  $('#f_nvrid').value = d ? nvrIdEfektif(d) : '';
   $('#f_nvrnama').value = d?.nvrNama || '';
   $('#f_nvrip').value = d?.nvrIp || '';
   $('#f_nvrchannel').value = d?.nvrChannel || '';
@@ -2710,7 +3005,15 @@ function openForm(id, prefillIp){
   $('#btnSimpanSpek').hidden = !canEdit();
   $('#btnKelolaSpek').hidden = !canEdit();
   $('#btnSalinDari').hidden = !canEdit();
-  pendingFoto = d?.foto || null; paintFoto(); $('#f_foto').value='';
+  pendingFoto = (d?.foto === undefined ? (d?.fotoThumb || null) : (d?.foto || null));
+  paintFoto(); $('#f_foto').value='';
+  if(d && d.foto === undefined && d.fotoThumb){
+    api.fotoPenuh(d.id).then(f=>{
+      d.foto = f || null;
+      /* Hanya ganti kalau pengguna belum memilih foto baru. */
+      if(f && $('#f_id').value === d.id && pendingFoto === d.fotoThumb){ pendingFoto = f; paintFoto(); }
+    }).catch(()=>{});
+  }
   $('#modal').hidden = false; lucide.createIcons();
   setTimeout(()=>$('#f_nama').focus(),30);
 }
@@ -3407,20 +3710,61 @@ $('#modalClose').addEventListener('click', closeForm);
 $('#formCancel').addEventListener('click', closeForm);
 $('#modal').addEventListener('click', e=>{ if(e.target.id==='modal') closeForm(); });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeForm(); });
-$$('.tab-btn').forEach(b=>b.addEventListener('click',()=>{ state.tab=b.dataset.tab; render(); }));
-$$('.view-btn').forEach(b=>b.addEventListener('click',()=>{ state.view=b.dataset.view; render(); }));
+/* ============================ ALAMAT HALAMAN ============================
+   Halaman yang sedang dibuka ditulis ke alamat sebagai #/… sehingga refresh,
+   bookmark, dan tombol Back browser bekerja seperti situs biasa.
+   Dipakai tanda pagar, bukan path sungguhan, karena aplikasi ini dibuka
+   sebagai berkas lokal — path seperti /database-ip butuh server web. */
+const RUTE = {
+  '#/monitoring/grid':  { tab:'monitor', view:'grid' },
+  '#/monitoring/tabel': { tab:'monitor', view:'list' },
+  '#/monitoring/peta':  { tab:'monitor', view:'map'  },
+  '#/database-ip':      { tab:'ipdb'  },
+  '#/checklist':        { tab:'check' },
+  '#/riwayat':          { tab:'log'   }
+};
+function ruteSekarang(){
+  if(state.tab === 'monitor')
+    return state.view==='list' ? '#/monitoring/tabel'
+         : state.view==='map'  ? '#/monitoring/peta'
+         : '#/monitoring/grid';
+  return state.tab==='ipdb' ? '#/database-ip'
+       : state.tab==='check' ? '#/checklist' : '#/riwayat';
+}
+let abaikanHash = false;
+function tulisRute(ganti = false){
+  const r = ruteSekarang();
+  if(location.hash === r) return;
+  abaikanHash = true;                    // jangan picu pembacaan balik
+  ganti ? history.replaceState(null,'',r) : history.pushState(null,'',r);
+  setTimeout(()=>{ abaikanHash = false; }, 0);
+}
+function bacaRute(){
+  const r = RUTE[location.hash];
+  if(!r) return false;
+  state.tab = r.tab;
+  if(r.view) state.view = r.view;
+  return true;
+}
+addEventListener('hashchange', ()=>{
+  if(abaikanHash) return;
+  if(bacaRute()) render();
+});
+
+$$('.tab-btn').forEach(b=>b.addEventListener('click',()=>{ state.tab=b.dataset.tab; tulisRute(); render(); }));
+$$('.view-btn').forEach(b=>b.addEventListener('click',()=>{ state.view=b.dataset.view; tulisRute(); render(); }));
 let t; $('#search').addEventListener('input', e=>{ clearTimeout(t); t=setTimeout(()=>{ state.q=e.target.value; render(); },280); });
-$('#fCluster').addEventListener('change',e=>{ state.cluster=e.target.value; render(); });
-$('#fZona').addEventListener('change',   e=>{ state.zona=e.target.value; render(); });
-$('#fBrand').addEventListener('change',  e=>{ state.brand=e.target.value; render(); });
-$('#fStatus').addEventListener('change', e=>{ state.status=e.target.value; render(); });
-$('#fNvr').addEventListener('change',    e=>{ state.nvr=e.target.value; render(); });
 /* siklus filter: mati → semua IP bersama → hanya yang belum dicek → hanya duplikat */
 $('#fShared').addEventListener('click', ()=>{
   state.shared = !state.shared ? 'semua' : state.shared==='semua' ? 'cek' : state.shared==='cek' ? 'dup' : false;
   render();
 });
-$('#fReset').addEventListener('click', ()=>{ state.q=state.cluster=state.zona=state.brand=state.status=state.nvr=''; state.shared=false; $('#search').value=''; render(); });
+$('#fReset').addEventListener('click', ()=>{
+  state.q=''; state.shared=false;
+  Object.values(state.f).forEach(x=>x.clear());
+  document.querySelectorAll('[data-panel]').forEach(x=>{ x.hidden = true; x.dataset.cari=''; });
+  $('#search').value=''; render();
+});
 $('#btnScan').addEventListener('click', ()=>scanFree($('#segInput').value));
 $('#segInput').addEventListener('keydown', e=>{ if(e.key==='Enter') scanFree($('#segInput').value); });
 $('#btnSeed').addEventListener('click', async ()=>{
