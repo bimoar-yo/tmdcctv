@@ -954,6 +954,15 @@ const api = {
     if(error) throw error;
     return (data||[]).map(fromRow);
   },
+  /* Daftar device yang punya foto tapi belum punya thumbnail. Kolom foto
+     tidak ikut ditarik — hanya id dan nama, supaya ringan. */
+  async perluThumbnail(){
+    if(!CLOUD) return [];
+    const { data, error } = await sb.from('devices').select('id,nama')
+      .is('foto_thumb', null).not('foto','is', null);
+    if(error) throw error;
+    return data||[];
+  },
   async fotoPenuh(id){
     if(!CLOUD) return devices.find(d=>d.id===id)?.foto || null;
     const { data, error } = await sb.from('devices').select('foto').eq('id', id).maybeSingle();
@@ -1479,7 +1488,7 @@ document.addEventListener('input', e=>{
 });
 
 function thumb(d,cls){
-  const kecil = d.fotoThumb || d.foto;   // thumbnail dulu; gambar penuh hanya di panel Detail
+  const kecil = d.fotoThumb || (typeof d.foto === 'string' ? d.foto : null);
   return kecil ? `<img src="${esc(kecil)}" alt="View ${esc(d.nama)}" loading="lazy" decoding="async" class="${cls} object-cover">`
                 : `<div class="${cls} grid place-items-center bg-ink-700 text-slate-600">${SVG.kamera}</div>`;
 }
@@ -2144,22 +2153,37 @@ $('#btnTautNvr').addEventListener('click', async ()=>{
 $('#btnThumb').addEventListener('click', async ()=>{
   if(!CLOUD){ toast('Alat ini hanya untuk mode Supabase.','warn'); return; }
   if(!canEdit()){ toast('Peran Anda tidak boleh mengubah data.','err'); return; }
-  const perlu = devices.filter(d=>d.foto && !d.fotoThumb);
+  let perlu = [];
+  try{ perlu = await api.perluThumbnail(); }
+  catch(err){ toast('Gagal memeriksa: '+(err.message||err),'err'); return; }
   if(!perlu.length){ toast('Semua foto sudah punya thumbnail.'); return; }
-  if(!confirm(`${perlu.length} foto belum punya thumbnail.\n\nProses ini mengunduh tiap foto sekali lalu mengunggah versi kecilnya — sekali jalan saja.\n\nLanjutkan?`)) return;
+  if(!confirm(`${perlu.length} foto belum punya thumbnail sehingga tidak tampil di daftar.\n\nProses ini mengambil tiap foto sekali, membuat versi kecilnya, lalu menyimpannya. Foto lama yang masih tersimpan sebagai data mentah sekalian dipindahkan ke Storage.\n\nLanjutkan?`)) return;
   let ok=0, gagal=0;
   for(let i=0;i<perlu.length;i++){
     const d = perlu[i];
-    $('#tesStatus') && ($('#tesStatus').textContent = `Thumbnail ${i+1}/${perlu.length} — ${d.nama}`);
+    toast(`Thumbnail ${i+1}/${perlu.length} — ${d.nama}`);
     try{
-      const blob = await (await fetch(d.foto, { cache:'no-store' })).blob();
+      /* Foto penuh diambil per device; sejak v33 ia tidak ikut dimuat di daftar. */
+      const sumber = await api.fotoPenuh(d.id);
+      if(!sumber) { gagal++; continue; }
+      const blob = sumber.startsWith('data:')
+        ? await (await fetch(sumber)).blob()
+        : await (await fetch(sumber, { cache:'no-store' })).blob();
       const dataUrl = await new Promise(r=>{ const fr=new FileReader(); fr.onload=()=>r(fr.result); fr.readAsDataURL(blob); });
       const kecil = await kecilkan(dataUrl, 320, .6);
       const { error } = await sb.storage.from(BUCKET).upload(`${d.id}_t.jpg`, kecil, { upsert:true, contentType:'image/jpeg' });
       if(error) throw error;
       const url = sb.storage.from(BUCKET).getPublicUrl(`${d.id}_t.jpg`).data.publicUrl + '?v=' + Date.now();
-      await api.patch(d.id, { foto_thumb: url });
-      d.fotoThumb = url; ok++;
+      /* Foto base64 lama sekalian dipindah ke Storage supaya tabel ringan. */
+      const perbarui = { foto_thumb: url };
+      if(sumber.startsWith('data:')){
+        const penuh = await sb.storage.from(BUCKET).upload(`${d.id}.jpg`, blob, { upsert:true, contentType:'image/jpeg' });
+        if(!penuh.error) perbarui.foto = sb.storage.from(BUCKET).getPublicUrl(`${d.id}.jpg`).data.publicUrl;
+      }
+      await api.patch(d.id, perbarui);
+      const lokal = devices.find(x=>x.id===d.id);
+      if(lokal){ lokal.fotoThumb = url; if(perbarui.foto) lokal.foto = perbarui.foto; }
+      ok++;
     }catch(err){ gagal++; console.error(d.nama, err); }
   }
   render();
