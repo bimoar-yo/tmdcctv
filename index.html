@@ -378,6 +378,9 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
         <button id="btnUndo" hidden class="px-3 py-2 rounded-lg bg-maint text-ink-900 border border-maint text-xs font-bold flex items-center gap-1.5">
           <i data-lucide="undo-2" class="w-3.5 h-3.5"></i> Undo pemindahan
         </button>
+        <button id="btnTempat" class="px-3 py-2 rounded-lg bg-on text-ink-900 border border-on text-xs font-bold flex items-center gap-1.5">
+          <i data-lucide="map-pin" class="w-3.5 h-3.5"></i> <span id="jmlTempat">Tempatkan koordinat</span>
+        </button>
         <button id="btnPaskan" class="px-3 py-2 rounded-lg bg-ink-800/95 backdrop-blur border border-line text-xs font-semibold hover:border-cyan2 flex items-center gap-1.5">
           <i data-lucide="maximize" class="w-3.5 h-3.5 text-cyan2"></i> Paskan tampilan
         </button>
@@ -393,6 +396,28 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
           <div class="flex items-center gap-1.5"><span class="kotak" style="opacity:.26"></span> Recognize — kenal orangnya</div>
           <div class="flex items-center gap-1.5"><span class="kotak" style="opacity:.16"></span> Observe — tahu itu orang</div>
           <div class="flex items-center gap-1.5"><span class="kotak" style="opacity:.09"></span> Detect — hanya ada gerakan</div>
+        </div>
+      </div>
+
+      <div id="panelTempat" hidden class="absolute left-3 bottom-3 z-[650] w-[min(380px,92%)]
+           bg-ink-800/97 backdrop-blur border border-on rounded-lg shadow-2xl p-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold text-on" id="tempatMaju">1 dari 14</span>
+          <button id="tempatTutup" class="text-slate-400 hover:text-off text-xs">Selesai</button>
+        </div>
+        <div class="flex gap-3">
+          <div id="tempatFoto" class="w-24 h-16 rounded-lg bg-ink-700 border border-line overflow-hidden shrink-0 grid place-items-center text-[10px] text-slate-600">tanpa foto</div>
+          <div class="min-w-0">
+            <div id="tempatNama" class="font-bold text-white truncate">—</div>
+            <div id="tempatInfo" class="text-xs text-slate-400 truncate">—</div>
+            <div id="tempatPesan" class="text-xs text-cyan2 mt-1">Klik di peta, tepat di posisi kamera ini.</div>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-line">
+          <button id="tempatArah" hidden class="px-3 py-1.5 rounded-lg bg-cyan2 text-ink-900 text-sm font-bold">Atur arah</button>
+          <button id="tempatLanjut" hidden class="px-3 py-1.5 rounded-lg border border-line text-sm">Lanjut tanpa arah</button>
+          <button id="tempatLewati" class="px-3 py-1.5 rounded-lg border border-line text-sm ml-auto">Lewati kamera ini</button>
+        <p class="text-[11px] text-slate-500 w-full mt-1">Saring dulu per cluster di atas agar antrean lebih pendek dan urut per area.</p>
         </div>
       </div>
 
@@ -499,6 +524,7 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
     <div class="flex flex-wrap items-center gap-2 mb-3">
       <h2 class="text-base font-bold text-white flex items-center gap-2"><i data-lucide="history" class="w-4 h-4 text-cyan2"></i> Riwayat perubahan</h2>
       <input id="logQ" placeholder="Saring: IP, email, atau aksi…" class="bg-ink-700 border border-line rounded px-3 py-1.5 text-sm w-64 focus:outline-none focus:border-cyan2">
+      <span class="text-xs text-slate-500">Catatan <b>Hapus</b> bisa dipulihkan oleh Administrator; catatan <b>Ubah</b> bisa dikembalikan nilainya.</span>
       <button id="logRefresh" class="px-2.5 py-1.5 text-sm rounded border border-line hover:border-cyan2 flex items-center gap-1.5"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Muat ulang</button>
       <span id="logCount" class="text-sm text-slate-500 font-mono"></span>
     </div>
@@ -1082,10 +1108,25 @@ const api = {
     if(error) throw error;
     try{ await sb.storage.from(BUCKET).remove(ids.flatMap(i=>[`${i}.jpg`, `${i}_t.jpg`])); }catch(e){}
   },
+  /* Memulihkan device dari catatan Riwayat. Baris log menyimpan seluruh
+     isi baris sebelum dihapus (kecuali foto), jadi device bisa dibuat ulang
+     dengan id yang sama — tautan NVR dari kamera lain ikut benar kembali. */
+  async pulihkanDevice(isi){
+    if(!CLOUD) throw new Error('Hanya tersedia pada mode Supabase.');
+    const baris = { ...isi };
+    ['created_at','updated_at','created_by','updated_by'].forEach(k=>delete baris[k]);
+    const { error } = await sb.from('devices').insert(baris);
+    if(error) throw error;
+  },
+  async kembalikanNilai(id, kolom){
+    if(!CLOUD) throw new Error('Hanya tersedia pada mode Supabase.');
+    const { error } = await sb.from('devices').update(kolom).eq('id', id);
+    if(error) throw error;
+  },
   async logs(limit = 300){
     if(!CLOUD) return null;
     const { data, error } = await sb.from('device_log')
-      .select('id,ip,aksi,oleh_email,sebelum,sesudah,waktu').order('waktu',{ascending:false}).limit(limit);
+      .select('id,device_id,ip,aksi,oleh_email,sebelum,sesudah,waktu').order('waktu',{ascending:false}).limit(limit);
     if(error) throw error;
     return data||[];
   },
@@ -2006,7 +2047,8 @@ function render(){
     if(state.view==='list') renderList();
     if(state.view!=='map' && atur) selesaiAturArah(false);
     if(state.view!=='map' && modePindah){ modePindah = false; setTombolPindah(); }
-    if(state.view==='map') setTombolUndo();
+    if(state.view!=='map' && modeTempat) hentikanTempat();
+    if(state.view==='map'){ setTombolUndo(); setTombolTempat(); }
     if(state.view==='map')  renderMap();
   } else if(state.tab==='ipdb') renderIpdb();
   else if(state.tab==='check') renderCheck();
@@ -2624,7 +2666,8 @@ function renderLog(){
     <thead class="bg-ink-700 text-slate-400"><tr>
       <th class="p-2.5 text-left w-44">Waktu</th><th class="p-2.5 text-left w-24">Aksi</th>
       <th class="p-2.5 text-left w-36">IP</th><th class="p-2.5 text-left w-56">Oleh</th>
-      <th class="p-2.5 text-left">Perubahan</th></tr></thead>
+      <th class="p-2.5 text-left">Perubahan</th>
+      <th class="p-2.5 text-right w-32 col-aksi">Pemulihan</th></tr></thead>
     <tbody>${rows.length ? rows.map(r=>{
       const [label,cl] = AKSI[r.aksi] || [r.aksi,'text-slate-400'];
       const det = diffRow(r.sebelum, r.sesudah);
@@ -2634,11 +2677,80 @@ function renderLog(){
         <td class="p-2.5 font-mono text-cyan2">${esc(r.ip||'—')}</td>
         <td class="p-2.5 text-slate-300 truncate">${esc(r.oleh_email||'sistem')}</td>
         <td class="p-2.5 text-xs leading-relaxed">${det.slice(0,8).join('<br>')}${det.length>8?`<br><span class="text-slate-600">+${det.length-8} perubahan lain</span>`:''}</td>
+        <td class="p-2 text-right col-aksi">${tombolPulih(r)}</td>
       </tr>`; }).join('')
-      : `<tr><td colspan="5" class="p-8 text-center text-slate-500">Belum ada catatan perubahan.</td></tr>`}
+      : `<tr><td colspan="6" class="p-8 text-center text-slate-500">Belum ada catatan perubahan.</td></tr>`}
     </tbody></table>`;
   pasangPenarik('#logTable', 'log');
 }
+/* Tombol pemulihan muncul sesuai jenis catatan:
+   Hapus  -> buat ulang device-nya (hanya Administrator)
+   Ubah   -> kembalikan nilai ke kondisi sebelumnya
+   Tambah -> tidak ada; menghapus device dilakukan dari daftar, bukan dari sini. */
+function tombolPulih(r){
+  if(r.aksi === 'DELETE'){
+    if(!isAdmin()) return '<span class="text-xs text-slate-600">—</span>';
+    const sudahAda = r.device_id && idxById.has(r.device_id);
+    return sudahAda
+      ? '<span class="text-xs text-on">sudah dipulihkan</span>'
+      : `<button data-pulih="${r.id}" class="px-2.5 py-1.5 rounded-lg border border-on text-on text-xs font-semibold hover:bg-on/10">Pulihkan</button>`;
+  }
+  if(r.aksi === 'UPDATE'){
+    if(!canEdit()) return '<span class="text-xs text-slate-600">—</span>';
+    if(!r.device_id || !idxById.has(r.device_id))
+      return '<span class="text-xs text-slate-600">device sudah tidak ada</span>';
+    return `<button data-balik="${r.id}" class="px-2.5 py-1.5 rounded-lg border border-line text-xs hover:border-cyan2">Kembalikan</button>`;
+  }
+  return '<span class="text-xs text-slate-600">—</span>';
+}
+
+document.addEventListener('click', async e=>{
+  const b = e.target.closest('[data-pulih]');
+  if(b){
+    const r = (logRows||[]).find(x=>String(x.id)===b.dataset.pulih);
+    if(!r || !r.sebelum) { toast('Catatan ini tidak memuat isi device.','err'); return; }
+    if(!isAdmin()){ toast('Hanya Administrator yang boleh memulihkan device.','err'); return; }
+    const isi = r.sebelum;
+    if(!confirm(`Pulihkan device berikut?\n\n${isi.nama} — ${isi.ip}\nDihapus ${new Date(r.waktu).toLocaleString('id-ID')} oleh ${r.oleh_email||'sistem'}\n\nCatatan: foto view tidak ikut tersimpan di riwayat, jadi perlu diunggah ulang.`)) return;
+    try{
+      await api.pulihkanDevice(isi);
+      await reload();
+      await loadLog(true); renderLog();
+      toast(`${isi.nama} dipulihkan.`);
+    }catch(err){
+      toast(/duplicate|unique/i.test(err.message||'')
+        ? 'Gagal: sudah ada device dengan IP dan nama yang sama.'
+        : 'Gagal memulihkan: '+(err.message||err), 'err');
+    }
+    return;
+  }
+
+  const k = e.target.closest('[data-balik]');
+  if(k){
+    const r = (logRows||[]).find(x=>String(x.id)===k.dataset.balik);
+    if(!r || !r.sebelum || !r.sesudah){ toast('Catatan ini tidak bisa dikembalikan.','err'); return; }
+    if(!canEdit()){ toast('Peran Anda tidak boleh mengubah data.','err'); return; }
+    /* Hanya field yang benar-benar berubah pada catatan itu yang dikembalikan,
+       supaya perubahan lain yang terjadi setelahnya tidak ikut terhapus. */
+    const kolom = {};
+    const lewati = new Set(['id','created_at','updated_at','created_by','updated_by']);
+    Object.keys({ ...r.sebelum, ...r.sesudah }).forEach(f=>{
+      if(lewati.has(f)) return;
+      if(String(r.sebelum[f] ?? '') !== String(r.sesudah[f] ?? '')) kolom[f] = r.sebelum[f] ?? null;
+    });
+    if(!Object.keys(kolom).length){ toast('Tidak ada nilai yang berbeda pada catatan ini.','warn'); return; }
+    const daftar = Object.entries(kolom).map(([f,v])=>`• ${logLabel(f)}: ${String(r.sesudah[f] ?? 'kosong')} → ${String(v ?? 'kosong')}`).join('\n');
+    if(!confirm(`Kembalikan ${Object.keys(kolom).length} nilai pada device ini?\n\n${daftar}\n\nPerubahan ini sendiri akan tercatat di Riwayat.`)) return;
+    try{
+      await api.kembalikanNilai(r.device_id, kolom);
+      await reload();
+      await loadLog(true); renderLog();
+      toast('Nilai dikembalikan.');
+    }catch(err){ toast('Gagal: '+(err.message||err),'err'); }
+    return;
+  }
+});
+
 $('#logRefresh').addEventListener('click', ()=>loadLog(true).then(renderLog));
 let lt; $('#logQ').addEventListener('input', ()=>{ clearTimeout(lt); lt=setTimeout(renderLog,180); });
 
@@ -3358,6 +3470,111 @@ document.addEventListener('keydown', e=>{
   }
 });
 
+/* ===================== MODE TEMPATKAN KOORDINAT =====================
+   Menuntun satu per satu kamera yang belum punya titik: tampilkan nama,
+   cluster, dan foto view-nya supaya mudah dikenali, lalu tinggal klik di
+   peta. Setelah tersimpan, langsung ditawari mengatur arah pandang. */
+let antreTempat = [], idxTempat = 0, modeTempat = false, lanjutSetelahArah = false;
+
+const belumTitik = d => !(Number.isFinite(+d.lat) && Number.isFinite(+d.lng) && d.lat!=='' && d.lng!=='');
+
+function setTombolTempat(){
+  const b = $('#btnTempat'); if(!b) return;
+  const sisa = filtered().filter(belumTitik).length;
+  b.hidden = !canEdit();
+  b.className = `px-3 py-2 rounded-lg border text-xs font-bold flex items-center gap-1.5 backdrop-blur ${
+    modeTempat ? 'bg-on text-ink-900 border-on' : sisa ? 'bg-ink-800/95 border-on text-on' : 'bg-ink-800/95 border-line text-slate-400'}`;
+  $('#jmlTempat').textContent = modeTempat ? 'Hentikan penempatan'
+    : sisa ? `Tempatkan koordinat (${sisa})` : 'Semua sudah punya titik';
+}
+
+function mulaiTempat(){
+  if(!canEdit()){ toast('Peran Anda tidak boleh mengubah data.','err'); return; }
+  antreTempat = filtered().filter(belumTitik);
+  if(!antreTempat.length){ toast('Semua kamera yang tampil sudah punya koordinat.'); return; }
+  modeTempat = true; idxTempat = 0;
+  if(modePindah){ modePindah = false; setTombolPindah(); renderMap(); }
+  setTombolTempat();
+  $('#panelTempat').hidden = false;
+  map.getContainer().style.cursor = 'crosshair';
+  map.on('click', klikTempat);
+  tampilTempat();
+  toast(`${antreTempat.length} kamera belum punya titik. Klik di peta untuk menempatkan.`,'warn');
+}
+
+function hentikanTempat(){
+  modeTempat = false;
+  map.off('click', klikTempat);
+  map.getContainer().style.cursor = '';
+  $('#panelTempat').hidden = true;
+  setTombolTempat();
+  renderMap();
+}
+
+function tampilTempat(){
+  if(idxTempat >= antreTempat.length){
+    toast('Selesai. Semua kamera dalam antrean sudah ditangani.');
+    hentikanTempat(); return;
+  }
+  const d = antreTempat[idxTempat];
+  $('#tempatMaju').textContent = `${idxTempat+1} dari ${antreTempat.length}`;
+  $('#tempatNama').textContent = d.nama;
+  $('#tempatInfo').innerHTML = `${esc(d.ip)} · ${esc(d.cluster)} · ${esc(d.zona)}${
+    (()=>{ const n=nvrDari(d); return n ? ` · ${esc(n.nama||n.ip)}${n.channel?` ch${esc(n.channel)}`:''}` : ''; })()}`;
+  const gambar = d.fotoThumb || (typeof d.foto === 'string' ? d.foto : null);
+  $('#tempatFoto').innerHTML = gambar
+    ? `<img src="${esc(gambar)}" alt="" class="w-full h-full object-cover">`
+    : 'tanpa foto';
+  $('#tempatPesan').innerHTML = '<span class="text-cyan2">Klik di peta, tepat di posisi kamera ini.</span>';
+  $('#tempatArah').hidden = true;
+  $('#tempatLanjut').hidden = true;
+  /* Geser peta ke sekitar kamera lain di cluster yang sama, supaya tidak
+     perlu mencari-cari lokasi dari awal. */
+  const tetangga = devices.find(x=>x.cluster===d.cluster && !belumTitik(x));
+  if(tetangga) map.panTo([+tetangga.lat, +tetangga.lng], { animate:true });
+}
+
+async function klikTempat(e){
+  if(!modeTempat) return;
+  const d = antreTempat[idxTempat]; if(!d) return;
+  const lat = e.latlng.lat.toFixed(7), lng = e.latlng.lng.toFixed(7);
+  try{
+    await api.patch(d.id, { lat:+lat, lng:+lng });
+    riwayatPindah.push({ id:d.id, nama:d.nama, lat:'', lng:'' });   // undo = kosongkan lagi
+    if(riwayatPindah.length > MAKS_UNDO) riwayatPindah.shift();
+    setTombolUndo();
+    d.lat = lat; d.lng = lng;
+    renderMap();
+    map.on('click', klikTempat);            // renderMap tidak menghapus, tapi aman
+    $('#tempatPesan').innerHTML = `<span class="text-on">Titik tersimpan: ${lat}, ${lng}</span>`;
+    $('#tempatArah').hidden = false;
+    $('#tempatLanjut').hidden = false;
+    setTombolTempat();
+  }catch(err){ toast('Gagal menyimpan titik: '+(err.message||err),'err'); }
+}
+
+$('#btnTempat').addEventListener('click', ()=> modeTempat ? hentikanTempat() : mulaiTempat());
+$('#tempatTutup').addEventListener('click', hentikanTempat);
+$('#tempatLewati').addEventListener('click', ()=>{ idxTempat++; tampilTempat(); });
+$('#tempatLanjut').addEventListener('click', ()=>{ idxTempat++; tampilTempat(); });
+$('#tempatArah').addEventListener('click', ()=>{
+  const d = antreTempat[idxTempat]; if(!d) return;
+  lanjutSetelahArah = true;
+  $('#panelTempat').hidden = true;
+  mulaiAturArah(d.id);
+});
+/* Setelah arah disimpan atau dibatalkan, kembali ke antrean. */
+function kembaliKeAntrean(majukan){
+  if(!lanjutSetelahArah) return;
+  lanjutSetelahArah = false;
+  if(!modeTempat) return;
+  if(majukan) idxTempat++;
+  $('#panelTempat').hidden = false;
+  map.on('click', klikTempat);
+  map.getContainer().style.cursor = 'crosshair';
+  tampilTempat();
+}
+
 /* paskan tampilan ke seluruh titik yang sedang tampil */
 $('#btnPaskan').addEventListener('click', ()=>{
   if(!map || !titikTerakhir.length){ toast('Belum ada titik berkoordinat untuk dipaskan.','warn'); return; }
@@ -3376,6 +3593,7 @@ $('#btnPindah').addEventListener('click', ()=>{
   if(!canEdit()){ toast('Peran Anda tidak boleh mengubah data.','err'); return; }
   modePindah = !modePindah;
   if(modePindah && atur) selesaiAturArah(false);
+  if(modePindah && modeTempat) hentikanTempat();
   setTombolPindah();
   renderMap();
   toast(modePindah
@@ -3394,7 +3612,7 @@ document.addEventListener('click', e=>{
   toast(`Seret marker ${d.nama} ke posisi yang benar.`,'warn');
 });
 
-$('#arahBatal').addEventListener('click', ()=>selesaiAturArah());
+$('#arahBatal').addEventListener('click', ()=>{ selesaiAturArah(); kembaliKeAntrean(false); });
 $('#arahSimpan').addEventListener('click', async ()=>{
   if(!atur) return;
   const { d } = atur;
@@ -3405,6 +3623,7 @@ $('#arahSimpan').addEventListener('click', async ()=>{
     const posisi = map.getCenter(), zum = map.getZoom();
     selesaiAturArah();
     map.setView(posisi, zum, { animate:false });
+    kembaliKeAntrean(true);
   }catch(err){ toast('Gagal menyimpan: '+(err.message||err),'err'); }
 });
 $('#arahHapus').addEventListener('click', async ()=>{
