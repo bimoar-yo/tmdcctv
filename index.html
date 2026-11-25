@@ -353,6 +353,7 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
   <select id="fZona"    aria-label="Filter zona"    class="bg-ink-700 border border-line rounded px-2.5 py-1.5 text-sm"></select>
   <select id="fBrand"   aria-label="Filter brand"   class="bg-ink-700 border border-line rounded px-2.5 py-1.5 text-sm"></select>
   <select id="fStatus"  aria-label="Filter status"  class="bg-ink-700 border border-line rounded px-2.5 py-1.5 text-sm"></select>
+  <select id="fNvr"     aria-label="Filter NVR"     class="bg-ink-700 border border-line rounded px-2.5 py-1.5 text-sm"></select>
   <button id="fShared" class="px-2.5 py-1.5 text-sm rounded border border-line flex items-center gap-1.5"><i data-lucide="link-2" class="w-3.5 h-3.5"></i> IP bersama</button>
   <button id="fReset" class="px-2.5 py-1.5 text-sm rounded border border-line text-slate-400 hover:text-cyan2 hover:border-cyan2 flex items-center gap-1.5"><i data-lucide="filter-x" class="w-3.5 h-3.5"></i> Bersihkan filter</button>
   <span id="filterCount" class="text-sm text-slate-500 font-mono"></span>
@@ -461,11 +462,6 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
 
       <div class="mt-4 pt-3 border-t border-line">
         <div class="flex flex-wrap items-center gap-2">
-          <div class="flex gap-1 bg-ink-700 p-1 rounded-xl border border-line mr-1" id="aksiTes">
-            <button data-aksi="ping" class="aksi-btn px-2.5 py-1.5 rounded-lg text-sm font-semibold">Tes ping</button>
-            <button data-aksi="view" class="aksi-btn px-2.5 py-1.5 rounded-lg text-sm font-semibold">Tes view</button>
-            <button data-aksi="dua"  class="aksi-btn px-2.5 py-1.5 rounded-lg text-sm font-semibold">Keduanya</button>
-          </div>
           <button id="btnTesSemua" class="px-3 py-2 rounded-xl bg-cyan2 text-ink-900 text-sm font-bold flex items-center gap-1.5">
             <i data-lucide="activity" class="w-4 h-4"></i> Jalankan ke semua yang tampil
           </button>
@@ -478,13 +474,11 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
           <label class="flex items-center gap-1.5 text-sm">Batas tunggu
             <input id="timeoutMs" type="number" min="500" max="15000" step="250" value="3000" class="w-24 bg-ink-700 border border-line rounded-lg px-2 py-1 text-sm font-mono"> ms</label>
         </div>
-        <div id="barisView" hidden class="flex flex-wrap items-center gap-2 mt-2">
-          <label class="text-sm flex-1 min-w-[320px]">Pola alamat snapshot
-            <input id="polaSnapshot" value="/ISAPI/Streaming/channels/101/picture" class="inp font-mono !mt-1">
-          </label>
-          <span class="text-xs text-slate-500 self-end pb-2">Hikvision: /ISAPI/… · Dahua: /cgi-bin/snapshot.cgi?channel=1</span>
-        </div>
-        <div id="galeriView" class="hidden grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mt-3"></div>
+        <!-- Tes view dinonaktifkan sementara: butuh sesi login per kamera, dan
+             kredensial di lapangan belum seragam. Kodenya dipertahankan di bawah
+             (aksiTes/tesView) supaya mudah dihidupkan lagi nanti. -->
+        <input id="polaSnapshot" type="hidden" value="/ISAPI/Streaming/channels/101/picture">
+        <div id="galeriView" class="hidden"></div>
         <div id="tesProgres" class="hidden mt-2">
           <div class="h-2 bg-ink-600 rounded overflow-hidden"><div id="tesBar" class="h-full bg-cyan2" style="width:0%"></div></div>
           <p id="tesStatus" class="text-xs text-slate-500 mt-1.5"></p>
@@ -492,9 +486,7 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
         <p class="text-xs text-slate-500 mt-2 leading-relaxed">
           Tes dijalankan dari browser ini ke <span class="font-mono">http://ip:port</span> — mengukur sambungan TCP/HTTP, <span class="text-maint">bukan ping ICMP</span>.
           Angkanya memuat handshake HTTP sehingga lebih besar daripada ping biasa; pakai untuk membandingkan antar-kamera, bukan sebagai angka mutlak.
-          Browser harus berada di jaringan yang sama dengan kamera. Untuk ICMP sungguhan dan penjadwalan harian otomatis, jalankan <span class="font-mono">agen-ping-cctv.py</span>.<br>
-          <span class="text-cyan2">Tes view</span> memuat gambar snapshot kamera langsung di halaman ini untuk diperiksa mata: ia membuktikan kamera benar-benar menghasilkan gambar, bukan sekadar menjawab jaringan.
-          Gambarnya <span class="text-on">tidak disimpan</span>, jadi tidak memakai kuota storage sama sekali. Kamera yang meminta login perlu dibuka sekali di tab lain lebih dulu agar browser menyimpan sesinya.
+          Browser harus berada di jaringan yang sama dengan kamera. Untuk ICMP sungguhan dan penjadwalan harian otomatis, jalankan <span class="font-mono">agen-ping-cctv.py</span>.
         </p>
       </div>
 
@@ -582,6 +574,9 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
             <button type="button" id="btnKelolaSpek" class="px-3 py-2 rounded-xl border border-line text-sm hover:border-cyan2 flex items-center gap-1.5">
               <i data-lucide="settings-2" class="w-4 h-4"></i> Kelola katalog
             </button>
+            <button type="button" id="btnSalinDari" class="px-3 py-2 rounded-xl border border-cyan2 text-cyan2 text-sm font-semibold hover:bg-cyan2/10 flex items-center gap-1.5">
+              <i data-lucide="copy" class="w-4 h-4"></i> Salin dari device lain
+            </button>
           </div>
           <p class="text-xs text-slate-500 mt-1.5">Mengisi brand, seri, bentuk, resolusi, lensa, IR, fitur, dan sumber daya. Serial number, MAC, firmware, tanggal pasang, dan garansi tetap diisi manual karena unik per unit.</p>
         </div>
@@ -642,6 +637,20 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
               <input id="f_dorii" type="number" step="0.1" placeholder="Identify" class="inp font-mono !mt-0" title="Identify — cukup untuk bukti">
             </div>
             <p class="text-xs text-slate-500 mt-1">Terisi sendiri saat memilih model dari katalog. Peta menggambarnya sebagai empat lapis corong.</p>
+          </div>
+          <div class="md:col-span-3 border-t border-line pt-3 mt-1">
+            <span class="text-sm">Perekaman — kamera ini tersimpan di NVR mana</span>
+            <div class="grid md:grid-cols-4 gap-3 mt-1.5">
+              <label class="text-xs md:col-span-2">Pilih NVR terdaftar
+                <select id="f_nvrid" class="inp"><option value="">— tidak ditautkan —</option></select></label>
+              <label class="text-xs">Nama NVR
+                <input id="f_nvrnama" placeholder="NVR Pos Utama" class="inp"></label>
+              <label class="text-xs">IP NVR
+                <input id="f_nvrip" placeholder="10.122.154.5" class="inp font-mono"></label>
+              <label class="text-xs">Channel di NVR
+                <input id="f_nvrchannel" placeholder="7" class="inp font-mono"></label>
+            </div>
+            <p class="text-xs text-slate-500 mt-1.5">Memilih NVR terdaftar mengisi nama dan IP-nya sendiri, dan tetap benar kalau IP NVR itu suatu saat diubah. Isi manual hanya untuk NVR yang belum didaftarkan sebagai device.</p>
           </div>
           <label class="text-sm md:col-span-3">Catatan teknisi
             <textarea id="f_catatan" rows="2" placeholder="Sudut pandang menghadap gerbang keluar; kabel lewat tray utara." class="inp"></textarea>
@@ -724,6 +733,17 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
   </div>
 </div>
 
+<!-- ========== SALIN DARI DEVICE LAIN ========== -->
+<div id="salin" hidden class="fixed inset-0 z-[1200] bg-black/70 backdrop-blur-sm overflow-y-auto p-3 md:p-6">
+  <div class="max-w-lg mx-auto bg-ink-800 border border-line rounded-lg shadow-2xl fade">
+    <div class="flex items-center justify-between px-5 py-3 border-b border-line">
+      <h3 class="font-bold text-white">Salin data dari device lain</h3>
+      <button id="salinClose" aria-label="Tutup" class="text-slate-400 hover:text-off"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <div id="salinBody" class="p-5"></div>
+  </div>
+</div>
+
 <div id="printArea" hidden></div>
 
 <div id="toast" class="fixed bottom-4 right-4 z-[2000] space-y-2"></div>
@@ -788,7 +808,8 @@ const fromRow = r => ({ id:r.id, nama:r.nama, ip:r.ip, portHttp:r.port_http, por
   jangkauan: r.jangkauan_m ? +r.jangkauan_m : 35,
   doriD: r.dori_d ? +r.dori_d : null, doriO: r.dori_o ? +r.dori_o : null,
   doriR: r.dori_r ? +r.dori_r : null, doriI: r.dori_i ? +r.dori_i : null,
-  fotoThumb: r.foto_thumb || null });
+  fotoThumb: r.foto_thumb || null,
+  nvrId: r.nvr_id || '', nvrNama: r.nvr_nama || '', nvrIp: r.nvr_ip || '', nvrChannel: r.nvr_channel || '' });
 const toRow = d => ({ id:d.id, nama:d.nama, ip:d.ip, port_http:d.portHttp, port_rtsp:d.portRtsp,
   brand:d.brand, kategori:d.kategori, cluster:d.cluster, zona:d.zona, status:d.status,
   ip_status:d.ipStatus, lat:d.lat===''?null:+d.lat, lng:d.lng===''?null:+d.lng, foto:d.foto,
@@ -802,7 +823,9 @@ const toRow = d => ({ id:d.id, nama:d.nama, ip:d.ip, port_http:d.portHttp, port_
   fov_derajat: d.fov ? +d.fov : 75,
   jangkauan_m: d.jangkauan ? +d.jangkauan : 35,
   dori_d: d.doriD || null, dori_o: d.doriO || null, dori_r: d.doriR || null, dori_i: d.doriI || null,
-  foto_thumb: d.fotoThumb || null });
+  foto_thumb: d.fotoThumb || null,
+  nvr_id: d.nvrId || null, nvr_nama: d.nvrNama || null,
+  nvr_ip: d.nvrIp || null, nvr_channel: d.nvrChannel || null });
 
 const BUCKET = 'cctv-foto';
 
@@ -1164,7 +1187,7 @@ function seedData(){
 }
 
 /* ============================ STATE & FILTER ============================ */
-let state = { tab:'monitor', view:'grid', q:'', cluster:'', zona:'', brand:'', status:'', shared:false,
+let state = { tab:'monitor', view:'grid', q:'', cluster:'', zona:'', brand:'', status:'', nvr:'', shared:false,
                cols: localStorage.getItem('cctvtmd_cols') || 'auto', sort:{key:'nama',dir:1} };
 let ck = { items:{}, catatan:{} };   // hasil checklist yang sedang diisi: {deviceId: 'hidup'|'mati'|'maintenance'}
 let ckRiwayat = null;
@@ -1183,6 +1206,11 @@ function filtered(){
     if(state.zona    && d.zona   !==state.zona)    return false;
     if(state.brand   && d.brand  !==state.brand)   return false;
     if(state.status  && d.status !==state.status)  return false;
+    if(state.nvr){
+      const n = nvrDari(d);
+      if(state.nvr === '__kosong'){ if(n) return false; }
+      else if(!n || (n.nama || n.ip) !== state.nvr) return false;
+    }
     if(state.shared){
       if(devices.filter(x=>x.ip===d.ip).length < 2) return false;
       if(state.shared==='cek' && d.ipBersamaOk !== null)  return false;
@@ -1211,6 +1239,10 @@ function fillFilters(){
   set('#fZona','Semua zona','zona',state.zona);
   set('#fBrand','Semua brand','brand',state.brand);
   set('#fStatus','Semua status','__status',state.status);
+  const namaNvr = [...new Set(devices.map(d=>{ const n=nvrDari(d); return n ? (n.nama||n.ip) : null; }).filter(Boolean))].sort();
+  $('#fNvr').innerHTML = '<option value="">Semua NVR</option>' +
+    namaNvr.map(v=>`<option ${v===state.nvr?'selected':''}>${esc(v)}</option>`).join('') +
+    `<option value="__kosong" ${state.nvr==='__kosong'?'selected':''}>— NVR belum diisi —</option>`;
   $('#clusterList').innerHTML = uniq('cluster').map(v=>`<option>${esc(v)}</option>`).join('');
 }
 function thumb(d,cls){
@@ -1236,6 +1268,7 @@ function renderGrid(){
         <div class="flex gap-1.5 mt-3">
           <button data-act="detail" data-id="${d.id}" class="flex-1 py-1.5 rounded bg-ink-700 border border-line text-xs hover:border-cyan2">Detail</button>
           ${canEdit()?`<button data-act="edit" data-id="${d.id}" aria-label="Edit" class="px-2.5 py-1.5 rounded bg-ink-700 border border-line hover:border-cyan2"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>`:''}
+          ${canEdit()?`<button data-act="dup" data-id="${d.id}" title="Duplikat device ini" class="px-2.5 py-1.5 rounded bg-ink-700 border border-line hover:border-cyan2"><i data-lucide="copy-plus" class="w-3.5 h-3.5"></i></button>`:''}
           ${isAdmin()?`<button data-act="del" data-id="${d.id}" aria-label="Hapus" class="px-2.5 py-1.5 rounded bg-ink-700 border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`:''}
         </div>
       </div>
@@ -1309,6 +1342,7 @@ function renderList(){
       <td class="p-1.5 text-right whitespace-nowrap col-aksi">
         <button data-act="detail" data-id="${d.id}" title="Lihat detail & spesifikasi" class="px-2 py-1.5 rounded-lg border border-line hover:border-cyan2"><i data-lucide="eye" class="w-3.5 h-3.5"></i></button>
         ${E?`<button data-act="edit" data-id="${d.id}" title="Edit lengkap: semua field + foto" class="px-2.5 py-1.5 rounded-lg border border-line bg-ink-700 hover:border-cyan2 hover:text-cyan2 inline-flex items-center gap-1 text-xs font-semibold"><i data-lucide="pencil" class="w-3.5 h-3.5"></i> Edit</button>`:''}
+        ${E?`<button data-act="dup" data-id="${d.id}" title="Duplikat device ini" class="px-2 py-1.5 rounded-lg border border-line hover:border-cyan2"><i data-lucide="copy-plus" class="w-3.5 h-3.5"></i></button>`:''}
         ${isAdmin()?`<button data-act="del" data-id="${d.id}" title="Hapus device" class="px-2 py-1.5 rounded-lg border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`:''}
       </td></tr>`; }).join('') : `<tr><td colspan="12" class="p-8 text-center text-slate-500">Tidak ada data yang cocok.</td></tr>`}
     </tbody></table>`;
@@ -1451,9 +1485,10 @@ function renderIpdb(){
 
   const sorted = [...f].sort((a,b)=>{ const sa=segOf(a.ip), sb=segOf(b.ip);
     return sa===sb ? hostOf(a.ip)-hostOf(b.ip) : sa.localeCompare(sb); });
-  $('#ipTable').innerHTML = `<table class="w-full text-sm min-w-[1040px]">
+  $('#ipTable').innerHTML = `<table class="w-full text-sm min-w-[1200px]">
     <thead class="bg-ink-700 text-slate-400"><tr><th class="p-2.5 text-left">IP address</th><th class="p-2.5 text-left">Nama device</th>
       <th class="p-2.5 text-left">Cluster</th><th class="p-2.5 text-left">Zona</th><th class="p-2.5 text-left">Kategori</th>
+      <th class="p-2.5 text-left">NVR perekam</th>
       <th class="p-2.5 text-left">Berbagi IP</th><th class="p-2.5 text-left">Status IP</th>
       <th class="p-2.5 text-left">Perangkat</th><th class="p-2.5 text-right col-aksi">Aksi</th></tr></thead>
     <tbody>${sorted.length?sorted.map(d=>{ const E = canEdit(); return `<tr class="border-t border-line hover:bg-ink-700/50">
@@ -1461,14 +1496,18 @@ function renderIpdb(){
       <td class="p-1.5 text-white">${E?inp(d,'nama'):esc(d.nama)}</td>
       <td class="p-1.5">${E?inp(d,'cluster'):esc(d.cluster)}</td><td class="p-1.5">${E?inp(d,'zona'):esc(d.zona)}</td>
       <td class="p-1.5 text-slate-400">${E?sel(d,'kategori',['CCTV','NVR','Switch','Access Point','Access Control','Server','Lainnya']):esc(d.kategori||'CCTV')}</td>
+      <td class="p-1.5 text-xs">${(()=>{ const n=nvrDari(d); return n
+        ? `<span class="text-slate-300">${esc(n.nama||n.ip)}</span>${n.channel?`<span class="text-slate-500 font-mono"> ch${esc(n.channel)}</span>`:''}`
+        : '<span class="text-maint">belum diisi</span>'; })()}</td>
       <td class="p-2.5">${sameIp(d)>1?flagIp(d):'<span class="text-slate-600 text-xs">—</span>'}</td>
       <td class="p-1.5">${E?sel(d,'ipStatus',['Used','Reserved']):`<span class="text-xs px-2 py-0.5 rounded-full border ${d.ipStatus==='Reserved'?'border-maint text-maint':'border-on/50 text-on'}">${esc(d.ipStatus||'Used')}</span>`}</td>
       <td class="p-1.5">${E?sel(d,'status',STATUS):statusPill(d.status)}</td>
       <td class="p-1.5 text-right whitespace-nowrap col-aksi">
         <button data-act="detail" data-id="${d.id}" title="Lihat detail" class="px-2 py-1.5 rounded-lg border border-line hover:border-cyan2"><i data-lucide="eye" class="w-3.5 h-3.5"></i></button>
         ${E?`<button data-act="edit" data-id="${d.id}" title="Edit lengkap" class="px-2.5 py-1.5 rounded-lg border border-line bg-ink-700 hover:border-cyan2 hover:text-cyan2 inline-flex items-center gap-1 text-xs font-semibold"><i data-lucide="pencil" class="w-3.5 h-3.5"></i> Edit</button>`:''}
+        ${E?`<button data-act="dup" data-id="${d.id}" title="Duplikat device ini" class="px-2 py-1.5 rounded-lg border border-line hover:border-cyan2"><i data-lucide="copy-plus" class="w-3.5 h-3.5"></i></button>`:''}
         ${isAdmin()?`<button data-act="del" data-id="${d.id}" aria-label="Hapus" class="px-2 py-1 rounded border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`:''}
-      </td></tr>`; }).join('') : `<tr><td colspan="9" class="p-8 text-center text-slate-500">Belum ada IP terdaftar.</td></tr>`}
+      </td></tr>`; }).join('') : `<tr><td colspan="10" class="p-8 text-center text-slate-500">Belum ada IP terdaftar.</td></tr>`}
     </tbody></table>`;
   $('#ipTable').insertAdjacentHTML('afterbegin',
     `<p class="px-3 py-2 text-xs text-slate-500 border-b border-line flex flex-wrap gap-x-3 gap-y-1 items-center">
@@ -1648,7 +1687,7 @@ $('#btnThumb').addEventListener('click', async ()=>{
      gagal cepat (koneksi ditolak)         -> dianggap tidak terjangkau
      habis batas tunggu                    -> Offline
    Untuk ICMP sungguhan, pakai agen di luar browser. */
-let aksiTes = localStorage.getItem('cctvtmd_aksi') || 'ping';
+let aksiTes = 'ping';   // 'view' dan 'dua' dinonaktifkan sementara
 let pilihTes = new Set();
 let hasilTes = {};          // { deviceId: {status, ms} }
 let tesBerjalan = false, tesDihentikan = false;
@@ -1758,14 +1797,7 @@ async function jalankanTes(daftar){
   toast(`Tes selesai: ${online} online, ${lambat} lambat, ${mati} tak terjangkau.`, mati?'warn':'ok');
 }
 
-function setAksiTes(){
-  $$('.aksi-btn').forEach(b=>b.className = `aksi-btn px-2.5 py-1.5 rounded-lg text-sm font-semibold ${
-    b.dataset.aksi===aksiTes ? 'bg-cyan2 text-ink-900' : 'text-slate-400 hover:text-white'}`);
-  $('#barisView').hidden = aksiTes === 'ping';
-}
-$$('.aksi-btn').forEach(b=>b.addEventListener('click', ()=>{
-  aksiTes = b.dataset.aksi; localStorage.setItem('cctvtmd_aksi', aksiTes); setAksiTes();
-}));
+function setAksiTes(){ /* pemilih aksi disembunyikan sementara */ }
 
 /* ---- Tes view: muat snapshot kamera sebagai <img>, tanpa menyimpannya ----
    Browser tidak bisa membaca isi gambar lintas-asal (aturan CORS), jadi
@@ -2091,6 +2123,140 @@ function renderLog(){
 $('#logRefresh').addEventListener('click', ()=>loadLog(true).then(renderLog));
 let lt; $('#logQ').addEventListener('input', ()=>{ clearTimeout(lt); lt=setTimeout(renderLog,180); });
 
+/* ============================ PEREKAMAN / NVR ============================ */
+/* NVR dicatat sebagai device biasa berkategori NVR atau Server. Kamera menaut
+   ke barisnya, bukan menyalin teksnya — jadi IP NVR cukup diperbaiki di satu
+   tempat. Nama dan IP tetap disimpan sebagai teks sebagai cadangan. */
+const daftarNvr = () => devices
+  .filter(d=>['NVR','Server'].includes(d.kategori))
+  .sort((a,b)=>a.nama.localeCompare(b.nama));
+
+function isiDropdownNvr(kecualikan){
+  const el = $('#f_nvrid'); if(!el) return;
+  const list = daftarNvr().filter(n=>n.id !== kecualikan);
+  el.innerHTML = '<option value="">— tidak ditautkan —</option>' +
+    list.map(n=>`<option value="${esc(n.id)}">${esc(n.nama)} · ${esc(n.ip)}</option>`).join('') +
+    (list.length ? '' : '<option disabled>(belum ada device berkategori NVR)</option>');
+}
+$('#f_nvrid').addEventListener('change', e=>{
+  const n = devices.find(x=>x.id===e.target.value);
+  if(!n) return;
+  $('#f_nvrnama').value = n.nama;
+  $('#f_nvrip').value = n.ip;
+  toast(`Ditautkan ke ${n.nama} (${n.ip}).`);
+});
+
+/* Yang ditampilkan: utamakan baris NVR yang ditaut, jatuh ke teks manual
+   kalau tautannya kosong atau baris NVR-nya sudah terhapus. */
+function nvrDari(d){
+  const n = d.nvrId ? devices.find(x=>x.id===d.nvrId) : null;
+  const nama = n?.nama || d.nvrNama || '';
+  const ip   = n?.ip   || d.nvrIp   || '';
+  if(!nama && !ip) return null;
+  return { nama, ip, channel:d.nvrChannel, tertaut: !!n };
+}
+
+/* ============================ SALIN & DUPLIKAT ============================ */
+/* Field dikelompokkan supaya penyalinan bisa dipilih per bagian.
+   Yang unik per unit — IP, nama, serial, MAC, koordinat — tidak pernah ikut. */
+const KELOMPOK_SALIN = {
+  spesifikasi: { label:'Spesifikasi perangkat',
+    sub:'brand, seri, bentuk, resolusi, lensa, IR, fitur, daya, firmware',
+    field:['brand','seri','tipeKamera','resolusi','lensa','ir','fitur','daya','firmware','kategori'] },
+  lokasi: { label:'Cluster & zona', sub:'penempatan administratif',
+    field:['cluster','zona'] },
+  jaringan: { label:'Port & status IP', sub:'port HTTP, port RTSP, status IP',
+    field:['portHttp','portRtsp','ipStatus'] },
+  cakupan: { label:'Cakupan pandang', sub:'sudut pandang, jangkauan, DORI — arah hadap tidak ikut',
+    field:['fov','jangkauan','doriD','doriO','doriR','doriI'] },
+  garansi: { label:'Pemasangan & garansi', sub:'tanggal pasang, garansi sampai',
+    field:['tglPasang','garansi'] },
+  perekaman: { label:'Perekaman / NVR', sub:'NVR yang merekam — nomor channel tidak ikut',
+    field:['nvrId','nvrNama','nvrIp'] },
+  catatan: { label:'Catatan teknisi', sub:'teks catatan', field:['catatan'] }
+};
+/* Tidak pernah disalin, dengan alasannya masing-masing. */
+const TAK_DISALIN = ['ip','nama','serial','mac','lat','lng','arah','foto','fotoThumb','status','nvrChannel'];
+
+const idField = k => '#f_' + k.toLowerCase();
+function isiField(k, nilai){
+  const el = document.querySelector(idField(k));
+  if(el) el.value = nilai ?? '';
+}
+
+/* ---- Salin dari device lain, ke form yang sedang terbuka ---- */
+function bukaSalin(){
+  const sekarang = $('#f_id').value;
+  const daftar = devices.filter(d=>d.id !== sekarang)
+    .sort((a,b)=>a.nama.localeCompare(b.nama));
+  $('#salinBody').innerHTML = `
+    <label class="text-sm block mb-3">Salin dari device
+      <input id="salinCari" list="salinList" placeholder="ketik nama atau IP…" class="inp font-mono">
+      <datalist id="salinList">${daftar.map(d=>`<option value="${esc(d.nama)}">${esc(d.ip)} · ${esc(d.cluster)}</option>`).join('')}</datalist>
+    </label>
+    <div class="grid gap-2 mb-4">
+      ${Object.entries(KELOMPOK_SALIN).map(([k,v])=>`
+        <label class="flex items-start gap-2 text-sm cursor-pointer p-2 rounded-lg border border-line hover:border-cyan2">
+          <input type="checkbox" class="salinGrup w-4 h-4 mt-0.5" value="${k}" ${k==='spesifikasi'||k==='cakupan'?'checked':''}>
+          <span><span class="text-white font-semibold">${v.label}</span>
+            <span class="block text-xs text-slate-500">${v.sub}</span></span>
+        </label>`).join('')}
+    </div>
+    <p class="text-xs text-slate-500 mb-4 leading-relaxed">
+      Tidak pernah ikut tersalin: IP, nama, serial number, MAC address, koordinat, arah hadap, foto, dan status — semuanya unik per unit.
+    </p>
+    <div id="salinPratinjau" class="text-xs text-slate-500 mb-4"></div>
+    <div class="flex justify-end gap-2 pt-3 border-t border-line">
+      <button id="salinBatal" class="px-4 py-2 rounded border border-line text-sm">Batal</button>
+      <button id="salinTerap" class="px-4 py-2 rounded bg-cyan2 text-ink-900 font-bold text-sm">Terapkan ke form</button>
+    </div>`;
+  $('#salin').hidden = false;
+  setTimeout(()=>$('#salinCari').focus(), 30);
+
+  const cari = () => devices.find(d=>d.nama === $('#salinCari').value.trim())
+              || devices.find(d=>d.ip === $('#salinCari').value.trim());
+  $('#salinCari').addEventListener('input', ()=>{
+    const d = cari();
+    $('#salinPratinjau').innerHTML = d
+      ? `Sumber: <span class="text-white">${esc(d.nama)}</span> · ${esc(d.ip)} · ${esc(d.brand||'tanpa brand')} ${esc(d.seri||'')} · ${esc(d.cluster)}`
+      : '';
+  });
+  $('#salinBatal').addEventListener('click', ()=>$('#salin').hidden = true);
+  $('#salinTerap').addEventListener('click', ()=>{
+    const d = cari();
+    if(!d){ toast('Pilih dulu device sumbernya.','err'); return; }
+    const grup = [...document.querySelectorAll('.salinGrup:checked')].map(x=>x.value);
+    if(!grup.length){ toast('Pilih minimal satu kelompok yang mau disalin.','err'); return; }
+    let jml = 0;
+    grup.forEach(g=>KELOMPOK_SALIN[g].field.forEach(k=>{
+      if(TAK_DISALIN.includes(k)) return;
+      if(d[k] !== undefined && d[k] !== null && d[k] !== ''){ isiField(k, d[k]); jml++; }
+    }));
+    $('#salin').hidden = true;
+    toast(`${jml} field disalin dari ${d.nama}. Periksa lalu tekan Simpan.`);
+  });
+  lucide.createIcons();
+}
+
+/* ---- Duplikat: form baru berisi salinan device ini ---- */
+function duplikatDevice(id){
+  const d = devices.find(x=>x.id===id); if(!d) return;
+  if(!canEdit()){ toast('Peran Anda tidak boleh menambah device.','err'); return; }
+  openForm();                                  // form kosong untuk device baru
+  Object.values(KELOMPOK_SALIN).forEach(v=>v.field.forEach(k=>{
+    if(!TAK_DISALIN.includes(k)) isiField(k, d[k]);
+  }));
+  /* Nama diberi akhiran supaya tidak bentrok; IP sengaja dikosongkan
+     agar tidak ada yang tersimpan dengan IP kembar karena lupa diubah. */
+  const m = d.nama.match(/^(.*?)(\d+)$/);
+  $('#f_nama').value = m ? `${m[1]}${String(+m[2]+1).padStart(m[2].length,'0')}` : `${d.nama} (salinan)`;
+  $('#f_ip').value = '';
+  $('#f_arah').value = ''; $('#f_lat').value = ''; $('#f_lng').value = '';
+  $('#modalTitle').innerHTML = `Duplikat dari <span class="text-cyan2">${esc(d.nama)}</span>`;
+  toast('Isi IP dan koordinat untuk device baru ini. Serial, MAC, dan foto sengaja dikosongkan.','warn');
+  setTimeout(()=>$('#f_ip').focus(), 60);
+}
+
 /* ============================ SPEC & DETAIL ============================ */
 /* [kunci JS, label tampilan, kolom CSV/Postgres] */
 const SPEC = [
@@ -2156,7 +2322,15 @@ function openDetail(id){
                  : `<div class="w-full h-40 rounded border border-dashed border-line grid place-items-center text-slate-600 text-xs">belum ada foto view</div>`}
         <div class="mt-3 space-y-1 text-sm">
           <div class="font-mono">${ipLink(d)}</div>
-          ${punyaDori(d)?`<div class="text-xs mt-1.5 text-slate-400">Cakupan: D ${d.doriD||'—'} · O ${d.doriO||'—'} · R ${d.doriR||'—'} · <span class="text-on">I ${d.doriI||'—'}</span> m${d.arah!==null&&d.arah!==undefined?` · menghadap ${namaArah(d.arah)} ${Math.round(d.arah)}°`:''}</div>`:''}
+          ${(()=>{ const n = nvrDari(d); return n
+          ? `<div class="text-xs mt-2 p-2 rounded-lg bg-ink-700 border border-line">
+               <div class="text-slate-500">Direkam di</div>
+               <div class="text-white font-semibold">${esc(n.nama||'—')}${n.channel?` · channel ${esc(n.channel)}`:''}</div>
+               ${n.ip?`<a href="http://${esc(n.ip)}" target="_blank" rel="noopener noreferrer" class="ip-link font-mono">${esc(n.ip)}</a>`:''}
+               ${n.tertaut?'':'<span class="text-maint"> · dicatat manual, belum ditautkan</span>'}
+             </div>`
+          : `<div class="text-xs mt-2 text-maint">NVR perekam belum diisi.</div>`; })()}
+        ${punyaDori(d)?`<div class="text-xs mt-1.5 text-slate-400">Cakupan: D ${d.doriD||'—'} · O ${d.doriO||'—'} · R ${d.doriR||'—'} · <span class="text-on">I ${d.doriI||'—'}</span> m${d.arah!==null&&d.arah!==undefined?` · menghadap ${namaArah(d.arah)} ${Math.round(d.arah)}°`:''}</div>`:''}
         ${sameIp(d)>1?`<div class="text-xs mt-1.5">${flagIp(d)}<div class="text-slate-500 mt-1">Dipakai bersama: ${devices.filter(x=>x.ip===d.ip).map(x=>esc(x.nama)).join(', ')}</div></div>`:''}
           <div class="font-mono text-xs text-slate-500">rtsp://${esc(d.ip)}:${esc(d.portRtsp||554)}</div>
           <div class="text-slate-400">${esc(d.cluster)} &middot; ${esc(d.zona)}</div>
@@ -2181,6 +2355,7 @@ function openDetail(id){
           <button data-riwayatping="${d.id}" class="px-3 py-2 rounded border border-line text-sm hover:border-cyan2 flex items-center gap-1.5">
             <i data-lucide="activity" class="w-3.5 h-3.5"></i> Riwayat tes</button>
           ${canEdit()?`<button data-act="edit" data-id="${d.id}" class="px-3 py-2 rounded bg-cyan2 text-ink-900 font-bold text-sm">Edit device</button>`:''}
+          ${canEdit()?`<button data-act="dup" data-id="${d.id}" class="px-3 py-2 rounded border border-line text-sm hover:border-cyan2 flex items-center gap-1.5"><i data-lucide="copy-plus" class="w-3.5 h-3.5"></i> Duplikat</button>`:''}
         </div>
       </div>
     </div>`;
@@ -2213,6 +2388,11 @@ function openForm(id, prefillIp){
   $('#f_arah').value = (d?.arah ?? '');
   $('#f_fov').value = d?.fov ?? 75;
   $('#f_jangkauan').value = d?.jangkauan ?? 35;
+  isiDropdownNvr(d?.id);
+  $('#f_nvrid').value = d?.nvrId || '';
+  $('#f_nvrnama').value = d?.nvrNama || '';
+  $('#f_nvrip').value = d?.nvrIp || '';
+  $('#f_nvrchannel').value = d?.nvrChannel || '';
   $('#f_dorid').value = d?.doriD ?? ''; $('#f_dorio').value = d?.doriO ?? '';
   $('#f_dorir').value = d?.doriR ?? ''; $('#f_dorii').value = d?.doriI ?? '';
   $('#f_catatan').value = d?.catatan || '';
@@ -2220,6 +2400,7 @@ function openForm(id, prefillIp){
   $('#f_katalog').value = '';
   $('#btnSimpanSpek').hidden = !canEdit();
   $('#btnKelolaSpek').hidden = !canEdit();
+  $('#btnSalinDari').hidden = !canEdit();
   pendingFoto = d?.foto || null; paintFoto(); $('#f_foto').value='';
   $('#modal').hidden = false; lucide.createIcons();
   setTimeout(()=>$('#f_nama').focus(),30);
@@ -2297,6 +2478,8 @@ $('#form').addEventListener('submit', async e=>{
     arah: $('#f_arah').value==='' ? null : +$('#f_arah').value,
     fov: +$('#f_fov').value || 75,
     jangkauan: +$('#f_jangkauan').value || 35,
+    nvrId: $('#f_nvrid').value || '', nvrNama: $('#f_nvrnama').value.trim(),
+    nvrIp: $('#f_nvrip').value.trim(), nvrChannel: $('#f_nvrchannel').value.trim(),
     doriD: +$('#f_dorid').value || null, doriO: +$('#f_dorio').value || null,
     doriR: +$('#f_dorir').value || null, doriI: +$('#f_dorii').value || null };
   SPEC.forEach(([k])=>{ rec[k] = $('#f_'+k.toLowerCase()).value.trim(); });
@@ -2306,7 +2489,8 @@ $('#form').addEventListener('submit', async e=>{
 
 /* ============================ CSV ============================ */
 const HEADER = ['nama','ip','port','brand','cluster','zona','status','latitude','longitude'];
-const EXTRA  = ['port_rtsp','kategori','ip_status', ...SPEC.map(s=>s[2]), 'catatan'];
+const EXTRA  = ['port_rtsp','kategori','ip_status', ...SPEC.map(s=>s[2]), 'catatan',
+                'nvr_nama','nvr_ip','nvr_channel'];
 function dl(name, content){ const a=document.createElement('a');
   a.href = URL.createObjectURL(new Blob([content],{type:'text/csv;charset=utf-8'})); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
 const csvCell = v => { const s=String(v??''); return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; };
@@ -2320,7 +2504,8 @@ $('#btnTemplate').addEventListener('click', ()=>{
 $('#btnExport').addEventListener('click', ()=>{
   const rows = [HEADER.concat(EXTRA).join(',')];
   devices.forEach(d=>rows.push([d.nama,d.ip,d.portHttp,d.brand,d.cluster,d.zona,d.status,d.lat,d.lng,
-    d.portRtsp,d.kategori,d.ipStatus, ...SPEC.map(s=>d[s[0]]), d.catatan].map(csvCell).join(',')));
+    d.portRtsp,d.kategori,d.ipStatus, ...SPEC.map(s=>d[s[0]]), d.catatan,
+    (nvrDari(d)?.nama||''), (nvrDari(d)?.ip||''), d.nvrChannel].map(csvCell).join(',')));
   dl(`cctv-export-${new Date().toISOString().slice(0,10)}.csv`, rows.join('\n'));
   toast(`${devices.length} baris diekspor. Foto tidak ikut dalam CSV.`,'warn');
 });
@@ -2351,7 +2536,8 @@ async function importCsv(text){
       kategori:g(c,'kategori')||'CCTV', cluster:g(c,'cluster')||'Tanpa cluster', zona:g(c,'zona')||'Tanpa zona',
       status:STATUS.find(s=>s.toLowerCase()===g(c,'status').toLowerCase())||'Offline',
       ipStatus:g(c,'ip_status')||'Used', lat:g(c,'latitude'), lng:g(c,'longitude'), foto:ex?.foto||null,
-      catatan:g(c,'catatan'), ...Object.fromEntries(SPEC.map(([key,,col])=>[key, g(c,col)])) });
+      catatan:g(c,'catatan'), nvrNama:g(c,'nvr_nama'), nvrIp:g(c,'nvr_ip'), nvrChannel:g(c,'nvr_channel'),
+      nvrId: ex?.nvrId || '', ...Object.fromEntries(SPEC.map(([key,,col])=>[key, g(c,col)])) });
   });
 
   /* Satu IP boleh dipakai beberapa view kamera, jadi yang dianggap duplikat
@@ -2654,6 +2840,9 @@ $('#btnSimpanSpek').addEventListener('click', async ()=>{
 });
 
 $('#btnKelolaSpek').addEventListener('click', ()=>bukaKatalog());
+$('#btnSalinDari').addEventListener('click', bukaSalin);
+$('#salinClose').addEventListener('click', ()=>$('#salin').hidden = true);
+$('#salin').addEventListener('click', e=>{ if(e.target.id==='salin') $('#salin').hidden = true; });
 $('#btnKatalog').addEventListener('click', ()=>bukaKatalog());
 $('#katalogClose').addEventListener('click', ()=>$('#katalog').hidden = true);
 $('#katalog').addEventListener('click', e=>{ if(e.target.id==='katalog') $('#katalog').hidden = true; });
@@ -2890,6 +3079,7 @@ document.addEventListener('click', async e=>{
   if(act){ const d = devices.find(x=>x.id===act.dataset.id); if(!d) return;
     if(act.dataset.act==='detail') openDetail(d.id);
     else if(act.dataset.act==='edit') openForm(d.id);
+    else if(act.dataset.act==='dup') duplikatDevice(d.id);
     else if(confirm(`Hapus "${d.nama}" (${d.ip})?`)){
       try{ await api.remove(d.id); await reload(); toast('Device dihapus.'); }
       catch(err){ toast('Gagal menghapus: '+(err.message||err),'err'); } }
@@ -2915,12 +3105,13 @@ $('#fCluster').addEventListener('change',e=>{ state.cluster=e.target.value; rend
 $('#fZona').addEventListener('change',   e=>{ state.zona=e.target.value; render(); });
 $('#fBrand').addEventListener('change',  e=>{ state.brand=e.target.value; render(); });
 $('#fStatus').addEventListener('change', e=>{ state.status=e.target.value; render(); });
+$('#fNvr').addEventListener('change',    e=>{ state.nvr=e.target.value; render(); });
 /* siklus filter: mati → semua IP bersama → hanya yang belum dicek → hanya duplikat */
 $('#fShared').addEventListener('click', ()=>{
   state.shared = !state.shared ? 'semua' : state.shared==='semua' ? 'cek' : state.shared==='cek' ? 'dup' : false;
   render();
 });
-$('#fReset').addEventListener('click', ()=>{ state.q=state.cluster=state.zona=state.brand=state.status=''; state.shared=false; $('#search').value=''; render(); });
+$('#fReset').addEventListener('click', ()=>{ state.q=state.cluster=state.zona=state.brand=state.status=state.nvr=''; state.shared=false; $('#search').value=''; render(); });
 $('#btnScan').addEventListener('click', ()=>scanFree($('#segInput').value));
 $('#segInput').addEventListener('keydown', e=>{ if(e.key==='Enter') scanFree($('#segInput').value); });
 $('#btnSeed').addEventListener('click', async ()=>{
