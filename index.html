@@ -672,7 +672,7 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
                 <i data-lucide="upload-cloud" class="w-4 h-4"></i> Pilih foto
               </span>
               <button type="button" id="fotoClear" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-line text-sm hover:border-off hover:text-off" hidden>
-                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Hapus
+                ${SVG.hapus} Hapus
               </button>
             </div>
             <p id="fotoInfo" class="text-xs text-slate-500 mt-2 leading-relaxed">
@@ -743,6 +743,8 @@ tbody tr:hover{ background:rgb(var(--c-raised)/.6) }
     <div id="salinBody" class="p-5"></div>
   </div>
 </div>
+
+<div id="menuKolom" hidden class="fixed z-[1300] w-64 bg-ink-800 border border-line rounded-lg shadow-2xl text-sm fade"></div>
 
 <div id="printArea" hidden></div>
 
@@ -1018,7 +1020,7 @@ function saveLocal(){
   catch{ toast('Penyimpanan browser penuh. Hapus beberapa foto.','err'); }
 }
 async function reload(){
-  try{ devices = await api.list(); }
+  try{ devices = await api.list(); bangunIndeks(); }
   catch(e){ toast('Gagal memuat data: '+(e.message||e),'err'); devices = []; }
   render();
 }
@@ -1192,14 +1194,29 @@ let state = { tab:'monitor', view:'grid', q:'', cluster:'', zona:'', brand:'', s
 let ck = { items:{}, catatan:{} };   // hasil checklist yang sedang diisi: {deviceId: 'hidup'|'mati'|'maintenance'}
 let ckRiwayat = null;
 let map, markerLayer, pendingFoto = null;
-let pasSekali = false, titikTerakhir = [], modePindah = false;
+let pasSekali = false, titikTerakhir = [], modePindah = false, kanvasCorong = null;
 /* Tumpukan posisi sebelum dipindah, untuk tombol Undo.
    Hanya di memori: menutup tab berarti riwayat undo hilang, tapi koordinat
    lama tetap tercatat permanen di tab Riwayat. */
 let riwayatPindah = [];
 const MAKS_UNDO = 25;
 
+/* Hasil penyaringan dipakai belasan kali dalam satu render (statistik,
+   penghitung, grid, peta). Sekarang dihitung sekali lalu dipakai ulang,
+   dan cache dibuang setiap kali state atau data berubah. */
+let cacheFilter = null, cacheKunci = '';
 function filtered(){
+  const kunci = JSON.stringify([state.q,state.cluster,state.zona,state.brand,
+                  state.status,state.nvr,state.shared,devices.length,penandaData]);
+  if(cacheFilter && cacheKunci === kunci) return cacheFilter;
+  cacheKunci = kunci;
+  cacheFilter = hitungFilter();
+  return cacheFilter;
+}
+let penandaData = 0;
+const dataBerubah = () => { penandaData++; cacheFilter = null; };
+
+function hitungFilter(){
   const q = state.q.trim().toLowerCase();
   return devices.filter(d=>{
     if(state.cluster && d.cluster!==state.cluster) return false;
@@ -1212,7 +1229,7 @@ function filtered(){
       else if(!n || (n.nama || n.ip) !== state.nvr) return false;
     }
     if(state.shared){
-      if(devices.filter(x=>x.ip===d.ip).length < 2) return false;
+      if((idxJmlIp.get(d.ip)||1) < 2) return false;
       if(state.shared==='cek' && d.ipBersamaOk !== null)  return false;
       if(state.shared==='dup' && d.ipBersamaOk !== false) return false;
     }
@@ -1248,7 +1265,7 @@ function fillFilters(){
 function thumb(d,cls){
   const kecil = d.fotoThumb || d.foto;   // thumbnail dulu; gambar penuh hanya di panel Detail
   return kecil ? `<img src="${esc(kecil)}" alt="View ${esc(d.nama)}" loading="lazy" decoding="async" class="${cls} object-cover">`
-                : `<div class="${cls} grid place-items-center bg-ink-700 text-slate-600"><i data-lucide="camera-off" class="w-5 h-5"></i></div>`;
+                : `<div class="${cls} grid place-items-center bg-ink-700 text-slate-600">${SVG.kamera}</div>`;
 }
 const badge = t => `<span class="text-[11px] px-1.5 py-0.5 rounded bg-ink-600 border border-line text-slate-300">${esc(t)}</span>`;
 
@@ -1267,9 +1284,9 @@ function renderGrid(){
         <div class="text-xs text-slate-600 mt-0.5 truncate">${[d.tipeKamera,d.resolusi,d.lensa&&d.lensa+'mm'].filter(Boolean).map(esc).join(' · ')||'&nbsp;'}</div>
         <div class="flex gap-1.5 mt-3">
           <button data-act="detail" data-id="${d.id}" class="flex-1 py-1.5 rounded bg-ink-700 border border-line text-xs hover:border-cyan2">Detail</button>
-          ${canEdit()?`<button data-act="edit" data-id="${d.id}" aria-label="Edit" class="px-2.5 py-1.5 rounded bg-ink-700 border border-line hover:border-cyan2"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>`:''}
-          ${canEdit()?`<button data-act="dup" data-id="${d.id}" title="Duplikat device ini" class="px-2.5 py-1.5 rounded bg-ink-700 border border-line hover:border-cyan2"><i data-lucide="copy-plus" class="w-3.5 h-3.5"></i></button>`:''}
-          ${isAdmin()?`<button data-act="del" data-id="${d.id}" aria-label="Hapus" class="px-2.5 py-1.5 rounded bg-ink-700 border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`:''}
+          ${canEdit()?`<button data-act="edit" data-id="${d.id}" aria-label="Edit" class="px-2.5 py-1.5 rounded bg-ink-700 border border-line hover:border-cyan2">${SVG.edit}</button>`:''}
+          ${canEdit()?`<button data-act="dup" data-id="${d.id}" title="Duplikat device ini" class="px-2.5 py-1.5 rounded bg-ink-700 border border-line hover:border-cyan2">${SVG.dup}</button>`:''}
+          ${isAdmin()?`<button data-act="del" data-id="${d.id}" aria-label="Hapus" class="px-2.5 py-1.5 rounded bg-ink-700 border border-line hover:border-off hover:text-off">${SVG.hapus}</button>`:''}
         </div>
       </div>
     </article>`).join('')
@@ -1318,40 +1335,135 @@ document.addEventListener('keydown', e=>{
   if(el && e.key==='Enter'){ e.preventDefault(); el.blur(); }
 });
 
+/* ============================ KOLOM TABEL ============================
+   Daftar kolom yang bisa ditampilkan/disembunyikan, seperti pemilih kolom
+   di File Explorer. Pilihan disimpan di browser. Kolom View, Nama, dan Aksi
+   selalu ada karena tanpa ketiganya tabel kehilangan fungsinya. */
+const KOLOM_TABEL = [
+  { k:'ip',        l:'IP',             baku:true,  sel:(d,E)=>`<td class="p-1.5 font-mono whitespace-nowrap">${E?inp(d,'ip','font-mono !w-32 inline-block')+'<span class="text-slate-600">:</span>'+inp(d,'portHttp','font-mono !w-14 inline-block')+' '+ipIconLink(d):ipLink(d)} ${flagIp(d)}</td>` },
+  { k:'cluster',   l:'Cluster',        baku:true,  sel:(d,E)=>`<td class="p-1.5">${E?inp(d,'cluster'):esc(d.cluster)}</td>` },
+  { k:'zona',      l:'Zona',           baku:true,  sel:(d,E)=>`<td class="p-1.5">${E?inp(d,'zona'):esc(d.zona)}</td>` },
+  { k:'nvr',       l:'NVR perekam',    baku:true,  sel:d=>{ const n=nvrDari(d); return `<td class="p-1.5 text-xs">${n
+      ? `<span class="text-slate-300">${esc(n.nama||n.ip)}</span>${n.ip&&n.nama?`<span class="text-slate-500 font-mono block">${esc(n.ip)}</span>`:''}`
+      : '<span class="text-maint">belum diisi</span>'}</td>`; } },
+  { k:'nvrChannel',l:'Channel NVR',    baku:true,  sel:(d,E)=>`<td class="p-1.5 font-mono text-xs">${E?inp(d,'nvrChannel','font-mono !w-16 inline-block'):(d.nvrChannel?'ch'+esc(d.nvrChannel):'—')}</td>` },
+  { k:'brand',     l:'Brand',          baku:true,  sel:(d,E)=>`<td class="p-1.5 text-slate-400">${E?inp(d,'brand'):esc(d.brand)}</td>` },
+  { k:'seri',      l:'Seri / model',   baku:true,  sel:(d,E)=>`<td class="p-1.5 font-mono text-xs text-slate-300">${E?inp(d,'seri','font-mono'):esc(d.seri||'—')}</td>` },
+  { k:'resolusi',  l:'Resolusi',       baku:true,  sel:(d,E)=>`<td class="p-1.5 text-slate-400">${E?inp(d,'resolusi'):esc(d.resolusi||'—')}</td>` },
+  { k:'lensa',     l:'Lensa',          baku:true,  sel:(d,E)=>`<td class="p-1.5 text-slate-400">${E?inp(d,'lensa','!w-20 inline-block'):esc(d.lensa||'—')}</td>` },
+  { k:'lat',       l:'Koordinat',      baku:true,  sel:(d,E)=>`<td class="p-1.5 font-mono text-xs text-slate-400 whitespace-nowrap">${E?inp(d,'lat','font-mono !w-24 inline-block')+inp(d,'lng','font-mono !w-24 inline-block'):esc(d.lat||'—')+', '+esc(d.lng||'—')}</td>` },
+  { k:'status',    l:'Status',         baku:true,  sel:(d,E)=>`<td class="p-1.5">${E?sel(d,'status',STATUS):statusPill(d.status)}</td>` },
+
+  { k:'kategori',  l:'Kategori',       baku:false, sel:(d,E)=>`<td class="p-1.5 text-slate-400">${E?sel(d,'kategori',['CCTV','NVR','Switch','Access Point','Access Control','Server','Lainnya']):esc(d.kategori||'CCTV')}</td>` },
+  { k:'portRtsp',  l:'Port RTSP',      baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs text-slate-400">${esc(d.portRtsp||'—')}</td>` },
+  { k:'ipStatus',  l:'Status IP',      baku:false, sel:(d,E)=>`<td class="p-1.5 text-xs">${E?sel(d,'ipStatus',['Used','Reserved']):esc(d.ipStatus||'Used')}</td>` },
+  { k:'tipeKamera',l:'Bentuk kamera',  baku:false, sel:d=>`<td class="p-1.5 text-slate-400">${esc(d.tipeKamera||'—')}</td>` },
+  { k:'ir',        l:'Jangkauan IR',   baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs text-slate-400">${d.ir?esc(d.ir)+' m':'—'}</td>` },
+  { k:'fitur',     l:'Fitur',          baku:false, sel:d=>`<td class="p-1.5 text-xs text-slate-400">${esc(d.fitur||'—')}</td>` },
+  { k:'arah',      l:'Arah hadap',     baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs">${(d.arah===null||d.arah===undefined||d.arah==='')?'<span class="text-maint">belum</span>':`${Math.round(d.arah)}° <span class="text-slate-500">${namaArah(d.arah)}</span>`}</td>` },
+  { k:'dori',      l:'Cakupan DORI',   baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs text-slate-400">${punyaDori(d)?`D${d.doriD||'—'} O${d.doriO||'—'} R${d.doriR||'—'} <span class="text-on">I${d.doriI||'—'}</span>`:'—'}</td>` },
+  { k:'serial',    l:'Serial number',  baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs text-slate-400">${esc(d.serial||'—')}</td>` },
+  { k:'mac',       l:'MAC address',    baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs text-slate-400">${esc(d.mac||'—')}</td>` },
+  { k:'firmware',  l:'Firmware',       baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs text-slate-400">${esc(d.firmware||'—')}</td>` },
+  { k:'daya',      l:'Sumber daya',    baku:false, sel:d=>`<td class="p-1.5 text-xs text-slate-400">${esc(d.daya||'—')}</td>` },
+  { k:'tglPasang', l:'Tanggal pasang', baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs text-slate-400">${esc(d.tglPasang||'—')}</td>` },
+  { k:'garansi',   l:'Garansi sampai', baku:false, sel:d=>`<td class="p-1.5 font-mono text-xs">${d.garansi?esc(d.garansi)+garansiNote(d):'<span class="text-slate-600">—</span>'}</td>` },
+  { k:'catatan',   l:'Catatan',        baku:false, sel:d=>`<td class="p-1.5 text-xs text-slate-400">${esc(d.catatan||'—')}</td>` }
+];
+
+function kolomAktif(){
+  try{
+    const simpan = JSON.parse(localStorage.getItem('cctvtmd_kolom') || 'null');
+    if(Array.isArray(simpan)) return new Set(simpan);
+  }catch(e){}
+  return new Set(KOLOM_TABEL.filter(c=>c.baku).map(c=>c.k));
+}
+function simpanKolom(set){
+  localStorage.setItem('cctvtmd_kolom', JSON.stringify([...set]));
+  /* Lebar kolom disimpan per posisi, jadi susunan yang berubah harus
+     direset — kalau tidak, lebar lama menempel di kolom yang salah. */
+  try{ localStorage.removeItem('cctvtmd_lebar_list'); }catch(e){}
+  delete alamiCache['list'];
+}
+
+function menuKolom(x, y){
+  const aktif = kolomAktif();
+  const el = $('#menuKolom');
+  el.innerHTML = `
+    <div class="px-3 py-2 text-xs text-slate-500 border-b border-line">Kolom yang ditampilkan</div>
+    <div class="max-h-80 overflow-y-auto py-1">
+      ${KOLOM_TABEL.map(c=>`<label class="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-ink-600 cursor-pointer">
+          <input type="checkbox" class="kolomCek w-4 h-4" value="${c.k}" ${aktif.has(c.k)?'checked':''}>
+          <span>${esc(c.l)}</span></label>`).join('')}
+    </div>
+    <div class="border-t border-line p-2 flex gap-2">
+      <button id="kolomBaku" class="flex-1 px-2 py-1.5 rounded border border-line text-xs hover:border-cyan2">Kembali ke bawaan</button>
+      <button id="kolomSemua" class="flex-1 px-2 py-1.5 rounded border border-line text-xs hover:border-cyan2">Tampilkan semua</button>
+    </div>`;
+  el.style.left = Math.min(x, innerWidth-300) + 'px';
+  el.style.top  = Math.min(y, innerHeight-420) + 'px';
+  el.hidden = false;
+
+  el.querySelectorAll('.kolomCek').forEach(c=>c.addEventListener('change', ()=>{
+    const set = kolomAktif();
+    c.checked ? set.add(c.value) : set.delete(c.value);
+    simpanKolom(set); renderList(); requestAnimationFrame(()=>lucide.createIcons());
+  }));
+  $('#kolomBaku').addEventListener('click', ()=>{
+    simpanKolom(new Set(KOLOM_TABEL.filter(c=>c.baku).map(c=>c.k)));
+    el.hidden = true; renderList();
+  });
+  $('#kolomSemua').addEventListener('click', ()=>{
+    simpanKolom(new Set(KOLOM_TABEL.map(c=>c.k)));
+    el.hidden = true; renderList();
+  });
+}
+document.addEventListener('click', e=>{
+  if(!e.target.closest('#menuKolom') && !e.target.closest('#btnKolom')) $('#menuKolom').hidden = true;
+});
+
 function renderList(){
-  const cols = [['nama','Nama'],['ip','IP'],['cluster','Cluster'],['zona','Zona'],['brand','Brand'],
-                ['seri','Seri / model'],['resolusi','Resolusi'],['lensa','Lensa'],['lat','Koordinat'],['status','Status']];
-  const f = filtered().sort((a,b)=>{ const k=state.sort.key;
+  const aktif = kolomAktif();
+  const tampil = KOLOM_TABEL.filter(c=>aktif.has(c.k));
+  const f = filtered().slice().sort((a,b)=>{ const k=state.sort.key;
     const va=(a[k]??'').toString().toLowerCase(), vb=(b[k]??'').toString().toLowerCase();
     return va<vb?-state.sort.dir:va>vb?state.sort.dir:0; });
-  $('#viewList').innerHTML = `<table class="w-full text-sm min-w-[920px]">
-    <thead class="bg-ink-700 text-slate-400"><tr><th class="p-2.5 text-left w-16">View</th>
-      ${cols.map(([k,l])=>`<th class="p-2.5 text-left sortable" data-sort="${k}">${l}${state.sort.key===k?(state.sort.dir>0?' ▲':' ▼'):''}</th>`).join('')}
+  const E = canEdit();
+  const lebarMin = 320 + tampil.length*130;
+
+  $('#viewList').innerHTML = `<table class="w-full text-sm" style="min-width:${lebarMin}px">
+    <thead class="bg-ink-700 text-slate-400"><tr>
+      <th class="p-2.5 text-left w-16">View</th>
+      <th class="p-2.5 text-left sortable" data-sort="nama">Nama${state.sort.key==='nama'?(state.sort.dir>0?' ▲':' ▼'):''}</th>
+      ${tampil.map(c=>`<th class="p-2.5 text-left sortable" data-sort="${c.k}">${esc(c.l)}${state.sort.key===c.k?(state.sort.dir>0?' ▲':' ▼'):''}</th>`).join('')}
       <th class="p-2.5 text-right col-aksi">Aksi</th></tr></thead>
-    <tbody>${f.length?f.map(d=>{ const E = canEdit(); return `<tr class="border-t border-line hover:bg-ink-700/50">
+    <tbody>${f.length?f.map(d=>`<tr class="border-t border-line hover:bg-ink-700/50">
       <td class="p-2">${thumb(d,'w-14 h-10 rounded')}</td>
       <td class="p-1.5 font-medium text-white">${E?inp(d,'nama'):esc(d.nama)}</td>
-      <td class="p-1.5 font-mono whitespace-nowrap">${E?inp(d,'ip','font-mono !w-32 inline-block')+'<span class="text-slate-600">:</span>'+inp(d,'portHttp','font-mono !w-14 inline-block')+' '+ipIconLink(d):ipLink(d)} ${flagIp(d)}</td>
-      <td class="p-1.5">${E?inp(d,'cluster'):esc(d.cluster)}</td><td class="p-1.5">${E?inp(d,'zona'):esc(d.zona)}</td>
-      <td class="p-1.5 text-slate-400">${E?inp(d,'brand'):esc(d.brand)}</td>
-      <td class="p-1.5 font-mono text-xs text-slate-300">${E?inp(d,'seri','font-mono'):esc(d.seri||'—')}</td>
-      <td class="p-1.5 text-slate-400">${E?inp(d,'resolusi'):esc(d.resolusi||'—')}</td>
-      <td class="p-1.5 text-slate-400">${E?inp(d,'lensa','!w-20 inline-block'):esc(d.lensa||'—')}</td>
-      <td class="p-1.5 font-mono text-xs text-slate-400 whitespace-nowrap">${E?inp(d,'lat','font-mono !w-24 inline-block')+inp(d,'lng','font-mono !w-24 inline-block'):esc(d.lat||'—')+', '+esc(d.lng||'—')}</td>
-      <td class="p-1.5">${E?sel(d,'status',STATUS):statusPill(d.status)}</td>
+      ${tampil.map(c=>c.sel(d,E)).join('')}
       <td class="p-1.5 text-right whitespace-nowrap col-aksi">
-        <button data-act="detail" data-id="${d.id}" title="Lihat detail & spesifikasi" class="px-2 py-1.5 rounded-lg border border-line hover:border-cyan2"><i data-lucide="eye" class="w-3.5 h-3.5"></i></button>
-        ${E?`<button data-act="edit" data-id="${d.id}" title="Edit lengkap: semua field + foto" class="px-2.5 py-1.5 rounded-lg border border-line bg-ink-700 hover:border-cyan2 hover:text-cyan2 inline-flex items-center gap-1 text-xs font-semibold"><i data-lucide="pencil" class="w-3.5 h-3.5"></i> Edit</button>`:''}
-        ${E?`<button data-act="dup" data-id="${d.id}" title="Duplikat device ini" class="px-2 py-1.5 rounded-lg border border-line hover:border-cyan2"><i data-lucide="copy-plus" class="w-3.5 h-3.5"></i></button>`:''}
-        ${isAdmin()?`<button data-act="del" data-id="${d.id}" title="Hapus device" class="px-2 py-1.5 rounded-lg border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`:''}
-      </td></tr>`; }).join('') : `<tr><td colspan="12" class="p-8 text-center text-slate-500">Tidak ada data yang cocok.</td></tr>`}
+        <button data-act="detail" data-id="${d.id}" title="Lihat detail & spesifikasi" class="px-2 py-1.5 rounded-lg border border-line hover:border-cyan2">${SVG.mata}</button>
+        ${E?`<button data-act="edit" data-id="${d.id}" title="Edit lengkap: semua field + foto" class="px-2.5 py-1.5 rounded-lg border border-line bg-ink-700 hover:border-cyan2 hover:text-cyan2 inline-flex items-center gap-1 text-xs font-semibold">${SVG.edit} Edit</button>`:''}
+        ${E?`<button data-act="dup" data-id="${d.id}" title="Duplikat device ini" class="px-2 py-1.5 rounded-lg border border-line hover:border-cyan2">${SVG.dup}</button>`:''}
+        ${isAdmin()?`<button data-act="del" data-id="${d.id}" title="Hapus device" class="px-2 py-1.5 rounded-lg border border-line hover:border-off hover:text-off">${SVG.hapus}</button>`:''}
+      </td></tr>`).join('') : `<tr><td colspan="${tampil.length+3}" class="p-8 text-center text-slate-500">Tidak ada data yang cocok.</td></tr>`}
     </tbody></table>`;
+
   $('#viewList').insertAdjacentHTML('afterbegin',
     `<p class="px-3 py-2 text-xs text-slate-500 border-b border-line flex flex-wrap gap-x-3 gap-y-1 items-center">
-      ${canEdit()?'<span>Klik sel mana pun untuk mengubah langsung — tersimpan saat pindah sel atau menekan Enter.</span>':''}
-      <span>Tarik garis pemisah di kepala kolom untuk mengatur lebar; klik dua kali untuk mengembalikan.</span>
-      <button data-resetlebar="list" class="ml-auto text-cyan2 hover:underline">Kembalikan semua lebar kolom</button>
+      ${E?'<span>Klik sel mana pun untuk mengubah langsung — tersimpan saat pindah sel atau menekan Enter.</span>':''}
+      <span>Tarik garis pemisah untuk mengatur lebar. Klik kanan pada kepala tabel untuk memilih kolom.</span>
+      <button id="btnKolom" class="ml-auto px-2 py-1 rounded border border-line text-cyan2 hover:border-cyan2">Pilih kolom (${tampil.length+2})</button>
+      <button data-resetlebar="list" class="text-cyan2 hover:underline">Kembalikan lebar</button>
     </p>`);
+
+  $('#btnKolom').addEventListener('click', e=>{
+    const r = e.target.getBoundingClientRect();
+    menuKolom(r.left-220, r.bottom+6);
+  });
+  $('#viewList').querySelector('thead')?.addEventListener('contextmenu', e=>{
+    e.preventDefault(); menuKolom(e.clientX, e.clientY);
+  });
   pasangPenarik('#viewList', 'list');
 }
 /* ===================== CORONG ARAH PANDANG =====================
@@ -1396,25 +1508,38 @@ const punyaDori = d => !!(d.doriD || d.doriO || d.doriR || d.doriI);
 
 function gambarCorong(d, layer){
   const w = WARNA[tone(d.status)];
+  const zum = map.getZoom();
+  const opsi = { color:w, weight:1, fillColor:w, interactive:false,
+                 className:'corong', renderer:kanvasCorong };
   if(!punyaDori(d)){
-    L.polygon(titikCorong(d), { color:w, weight:1, opacity:.75, fillColor:w,
-      fillOpacity:.22, interactive:false, className:'corong' }).addTo(layer);
+    L.polygon(titikCorong(d), { ...opsi, opacity:.75, fillOpacity:.22 }).addTo(layer);
     return;
   }
-  LAPIS.forEach(({k, nama, isi, garis})=>{
+  /* Di zoom jauh, empat lapis DORI jadi satu noda kecil yang tak terbaca tapi
+     tetap menghabiskan waktu gambar. Di bawah zoom 16 cukup lapis terluar. */
+  const lapis = zum < 16 ? LAPIS.slice(0,1) : LAPIS;
+  lapis.forEach(({k, nama, isi, garis})=>{
     const jauh = d[k]; if(!jauh) return;
-    L.polygon(titikCorong(d, d.arah, d.fov, jauh), {
-      color:w, weight:1, opacity:garis, fillColor:w, fillOpacity:isi,
-      interactive:false, className:'corong'
-    }).addTo(layer).bindTooltip(`${esc(d.nama)} — ${nama} ${jauh} m`);
+    L.polygon(titikCorong(d, d.arah, d.fov, jauh),
+      { ...opsi, opacity:garis, fillOpacity: zum<16 ? .2 : isi }).addTo(layer);
   });
 }
 
 function initMap(){
   if(map) return;
-  map = L.map('map').setView([-6.2235,106.6080],14);
+  /* preferCanvas: ratusan corong digambar di satu kanvas, bukan ratusan
+     elemen SVG. Ini perbedaan terbesar saat menggeser peta. */
+  map = L.map('map', { preferCanvas:true }).setView([-6.2235,106.6080],14);
+  kanvasCorong = L.canvas({ padding:0.3 });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
   markerLayer = L.layerGroup().addTo(map);
+  /* Gambar ulang hanya saat melewati ambang zoom 16, bukan setiap geseran. */
+  let zumLalu = map.getZoom();
+  map.on('zoomend', ()=>{
+    const z = map.getZoom();
+    if((zumLalu < 16) !== (z < 16)) renderMap();
+    zumLalu = z;
+  });
 }
 function renderMap(){
   initMap(); markerLayer.clearLayers();
@@ -1503,10 +1628,10 @@ function renderIpdb(){
       <td class="p-1.5">${E?sel(d,'ipStatus',['Used','Reserved']):`<span class="text-xs px-2 py-0.5 rounded-full border ${d.ipStatus==='Reserved'?'border-maint text-maint':'border-on/50 text-on'}">${esc(d.ipStatus||'Used')}</span>`}</td>
       <td class="p-1.5">${E?sel(d,'status',STATUS):statusPill(d.status)}</td>
       <td class="p-1.5 text-right whitespace-nowrap col-aksi">
-        <button data-act="detail" data-id="${d.id}" title="Lihat detail" class="px-2 py-1.5 rounded-lg border border-line hover:border-cyan2"><i data-lucide="eye" class="w-3.5 h-3.5"></i></button>
-        ${E?`<button data-act="edit" data-id="${d.id}" title="Edit lengkap" class="px-2.5 py-1.5 rounded-lg border border-line bg-ink-700 hover:border-cyan2 hover:text-cyan2 inline-flex items-center gap-1 text-xs font-semibold"><i data-lucide="pencil" class="w-3.5 h-3.5"></i> Edit</button>`:''}
-        ${E?`<button data-act="dup" data-id="${d.id}" title="Duplikat device ini" class="px-2 py-1.5 rounded-lg border border-line hover:border-cyan2"><i data-lucide="copy-plus" class="w-3.5 h-3.5"></i></button>`:''}
-        ${isAdmin()?`<button data-act="del" data-id="${d.id}" aria-label="Hapus" class="px-2 py-1 rounded border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`:''}
+        <button data-act="detail" data-id="${d.id}" title="Lihat detail" class="px-2 py-1.5 rounded-lg border border-line hover:border-cyan2">${SVG.mata}</button>
+        ${E?`<button data-act="edit" data-id="${d.id}" title="Edit lengkap" class="px-2.5 py-1.5 rounded-lg border border-line bg-ink-700 hover:border-cyan2 hover:text-cyan2 inline-flex items-center gap-1 text-xs font-semibold">${SVG.edit} Edit</button>`:''}
+        ${E?`<button data-act="dup" data-id="${d.id}" title="Duplikat device ini" class="px-2 py-1.5 rounded-lg border border-line hover:border-cyan2">${SVG.dup}</button>`:''}
+        ${isAdmin()?`<button data-act="del" data-id="${d.id}" aria-label="Hapus" class="px-2 py-1 rounded border border-line hover:border-off hover:text-off">${SVG.hapus}</button>`:''}
       </td></tr>`; }).join('') : `<tr><td colspan="10" class="p-8 text-center text-slate-500">Belum ada IP terdaftar.</td></tr>`}
     </tbody></table>`;
   $('#ipTable').insertAdjacentHTML('afterbegin',
@@ -1530,6 +1655,7 @@ function scanFree(seg){
     ${free.length>show.length?`<p class="text-xs text-slate-500 mt-2">Menampilkan ${show.length} pertama dari ${free.length}.</p>`:''}`;
 }
 function render(){
+  bangunIndeks();
   fillFilters(); renderStats();
   $('#filterCount').textContent = `${filtered().length} dari ${devices.length} device`;
   $('#tab-monitor').hidden = state.tab!=='monitor';
@@ -1556,12 +1682,16 @@ function render(){
   } else if(state.tab==='ipdb') renderIpdb();
   else if(state.tab==='check') renderCheck();
   else renderLog();
-  lucide.createIcons();
+  /* Ikon di dalam daftar sudah berupa SVG tetap, jadi pemindaian DOM ini
+     hanya perlu untuk kerangka halaman — dijalankan setelah frame digambar
+     supaya tidak menahan tampilan. */
+  requestAnimationFrame(()=>lucide.createIcons());
 }
 
 /* ============================ LEBAR KOLOM BISA DITARIK ============================ */
 /* Lebar tiap kolom disimpan per tabel di browser, jadi tidak perlu diatur ulang
    setiap kali halaman dibuka. Klik dua kali pada garis pemisah untuk mengembalikan. */
+const alamiCache = {};
 const lebarTersimpan = key => { try{ return JSON.parse(localStorage.getItem('cctvtmd_lebar_'+key)||'{}'); }catch{ return {}; } };
 const simpanLebar = (key,obj) => { try{ localStorage.setItem('cctvtmd_lebar_'+key, JSON.stringify(obj)); }catch(e){} };
 
@@ -1573,8 +1703,12 @@ function pasangPenarik(wadahSel, key){
   if(!kepala.length) return;
 
   const tersimpan = lebarTersimpan(key);
-  /* Ukur lebar alami dulu, baru kunci — supaya tabel tidak melompat saat dipasang. */
-  const alami = kepala.map(th => Math.max(60, Math.round(th.getBoundingClientRect().width)));
+  /* getBoundingClientRect memaksa browser menghitung tata letak. Pada tabel
+     200 baris itu terasa, dan tidak perlu diulang tiap render — lebar alami
+     cukup diukur sekali per tabel lalu disimpan di memori. */
+  if(!alamiCache[key])
+    alamiCache[key] = kepala.map(th => Math.max(60, Math.round(th.getBoundingClientRect().width)));
+  const alami = alamiCache[key];
   kepala.forEach((th,i)=>{
     const w = tersimpan[i] || alami[i];
     th.style.width = w + 'px';
@@ -1940,7 +2074,15 @@ document.addEventListener('click', e=>{
     const id = b.dataset.ck;
     ck.items[id] = (ck.items[id]===b.dataset.kondisi) ? undefined : b.dataset.kondisi;
     if(!ck.items[id]) delete ck.items[id];
-    renderCheck(); lucide.createIcons(); return;
+    /* Dulu seluruh tabel 200 baris digambar ulang setiap satu tombol ditekan.
+       Sekarang hanya tiga tombol di baris itu yang berganti kelas. */
+    document.querySelectorAll(`.ckbtn[data-ck="${id}"]`).forEach(x=>{
+      const t = KONDISI.find(([k])=>k===x.dataset.kondisi)[2];
+      x.className = `ckbtn px-2.5 py-1.5 rounded-lg border text-xs font-semibold ${
+        ck.items[id]===x.dataset.kondisi ? 'sel-'+t : 'border-line text-slate-400 hover:border-cyan2'}`;
+    });
+    renderCkStats();
+    return;
   }
   const f = e.target.closest('.ckFill');
   if(f){
@@ -2149,7 +2291,7 @@ $('#f_nvrid').addEventListener('change', e=>{
 /* Yang ditampilkan: utamakan baris NVR yang ditaut, jatuh ke teks manual
    kalau tautannya kosong atau baris NVR-nya sudah terhapus. */
 function nvrDari(d){
-  const n = d.nvrId ? devices.find(x=>x.id===d.nvrId) : null;
+  const n = d.nvrId ? idxById.get(d.nvrId) : null;
   const nama = n?.nama || d.nvrNama || '';
   const ip   = n?.ip   || d.nvrIp   || '';
   if(!nama && !ip) return null;
@@ -2275,7 +2417,41 @@ const SPEC = [
 ];
 const MONO = new Set(['seri','serial','mac','firmware','ir']);
 /* Berapa banyak view yang berbagi IP ini — satu kamera multi-sensor bisa punya beberapa. */
-const sameIp = d => devices.filter(x=>x.ip===d.ip).length;
+/* ---------- Ikon sebagai SVG tetap ----------
+   lucide.createIcons() memindai SELURUH DOM setiap render. Dengan 200 kartu
+   berisi 3 ikon, itu 600 simpul yang diganti tiap kali. Ikon di dalam baris
+   dan kartu sekarang ditulis langsung sebagai SVG, jadi lucide hanya
+   mengurus kerangka halaman yang jumlahnya tetap. */
+const SVG = (()=>{
+  const b = (isi, k='w-3.5 h-3.5') => `<svg class="${k}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${isi}</svg>`;
+  return {
+    mata:  b('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>'),
+    edit:  b('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>'),
+    hapus: b('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>'),
+    dup:   b('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 4H6a2 2 0 0 0-2 2v10"/><path d="M14 11v6M11 14h6"/>'),
+    tautan:b('<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M21 14v7H3V3h7"/>', 'w-3 h-3 inline-block align-[-1px] ml-1 opacity-60'),
+    kamera:b('<path d="M2 8h20v12H2z"/><path d="m2 8 4-4h8l4 4"/><path d="m2 2 20 20"/>', 'w-5 h-5')
+  };
+})();
+
+/* ---------- Indeks dalam memori ----------
+   Sebelumnya setiap baris memindai seluruh array devices untuk menghitung
+   berapa perangkat memakai IP yang sama. Pada 200 device itu 40.000 kali
+   pemindaian per render, dan dipanggil berkali-kali per baris. Sekarang
+   dihitung sekali per perubahan data. */
+let idxJmlIp = new Map();     // ip -> jumlah device
+let idxNamaIp = new Map();    // ip -> daftar nama
+let idxById = new Map();      // id -> device
+function bangunIndeks(){
+  cacheFilter = null;
+  idxJmlIp = new Map(); idxNamaIp = new Map(); idxById = new Map();
+  for(const d of devices){
+    idxById.set(d.id, d);
+    idxJmlIp.set(d.ip, (idxJmlIp.get(d.ip)||0) + 1);
+    const n = idxNamaIp.get(d.ip); n ? n.push(d.nama) : idxNamaIp.set(d.ip, [d.nama]);
+  }
+}
+const sameIp = d => idxJmlIp.get(d.ip) || 1;
 /* IP sebagai tautan ke antarmuka web perangkat, selalu dibuka di tab baru */
 const ipUrl  = d => `http://${d.ip}:${d.portHttp||80}`;
 const ipLink = d => `<a href="${esc(ipUrl(d))}" target="_blank" rel="noopener noreferrer" class="ip-link"
@@ -2293,7 +2469,7 @@ function flagIp(d){
   if(n < 2) return '';
   const st = STATUS_IP[String(d.ipBersamaOk)] || STATUS_IP['null'];
   const oleh = d.ipBersamaOleh ? ` · ditandai oleh ${d.ipBersamaOleh}` : '';
-  const nama = devices.filter(x=>x.ip===d.ip).map(x=>x.nama).join(', ');
+  const nama = (idxNamaIp.get(d.ip)||[]).join(', ');
   const bisa = canEdit();
   const tag = bisa ? 'button' : 'span';
   return `<${tag} ${bisa?`type="button" data-flagip="${d.id}"`:''} class="flag-ip ${st.kelas}"
@@ -2331,7 +2507,7 @@ function openDetail(id){
              </div>`
           : `<div class="text-xs mt-2 text-maint">NVR perekam belum diisi.</div>`; })()}
         ${punyaDori(d)?`<div class="text-xs mt-1.5 text-slate-400">Cakupan: D ${d.doriD||'—'} · O ${d.doriO||'—'} · R ${d.doriR||'—'} · <span class="text-on">I ${d.doriI||'—'}</span> m${d.arah!==null&&d.arah!==undefined?` · menghadap ${namaArah(d.arah)} ${Math.round(d.arah)}°`:''}</div>`:''}
-        ${sameIp(d)>1?`<div class="text-xs mt-1.5">${flagIp(d)}<div class="text-slate-500 mt-1">Dipakai bersama: ${devices.filter(x=>x.ip===d.ip).map(x=>esc(x.nama)).join(', ')}</div></div>`:''}
+        ${sameIp(d)>1?`<div class="text-xs mt-1.5">${flagIp(d)}<div class="text-slate-500 mt-1">Dipakai bersama: ${(idxNamaIp.get(d.ip)||[]).map(esc).join(', ')}</div></div>`:''}
           <div class="font-mono text-xs text-slate-500">rtsp://${esc(d.ip)}:${esc(d.portRtsp||554)}</div>
           <div class="text-slate-400">${esc(d.cluster)} &middot; ${esc(d.zona)}</div>
           <div class="font-mono text-xs text-slate-500">${esc(d.lat||'—')}, ${esc(d.lng||'—')}</div>
@@ -2355,7 +2531,7 @@ function openDetail(id){
           <button data-riwayatping="${d.id}" class="px-3 py-2 rounded border border-line text-sm hover:border-cyan2 flex items-center gap-1.5">
             <i data-lucide="activity" class="w-3.5 h-3.5"></i> Riwayat tes</button>
           ${canEdit()?`<button data-act="edit" data-id="${d.id}" class="px-3 py-2 rounded bg-cyan2 text-ink-900 font-bold text-sm">Edit device</button>`:''}
-          ${canEdit()?`<button data-act="dup" data-id="${d.id}" class="px-3 py-2 rounded border border-line text-sm hover:border-cyan2 flex items-center gap-1.5"><i data-lucide="copy-plus" class="w-3.5 h-3.5"></i> Duplikat</button>`:''}
+          ${canEdit()?`<button data-act="dup" data-id="${d.id}" class="px-3 py-2 rounded border border-line text-sm hover:border-cyan2 flex items-center gap-1.5">${SVG.dup} Duplikat</button>`:''}
         </div>
       </div>
     </div>`;
@@ -2863,7 +3039,7 @@ function bukaKatalog(){
           ${['label','brand','seri','tipeKamera','resolusi','lensa','ir','fitur','daya']
             .map(f=>`<td class="p-1">${E?`<input class="cell-edit" data-spek="${k.id}" data-sfield="${f}" value="${esc(k[f]||'')}">`:esc(k[f]||'—')}</td>`).join('')}
           <td class="p-2 text-right font-mono text-slate-500">${k.dipakai||0}×</td>
-          ${E?`<td class="p-1 text-right"><button data-hapusspek="${k.id}" class="px-2 py-1 rounded border border-line hover:border-off hover:text-off"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button></td>`:''}
+          ${E?`<td class="p-1 text-right"><button data-hapusspek="${k.id}" class="px-2 py-1 rounded border border-line hover:border-off hover:text-off">${SVG.hapus}</button></td>`:''}
         </tr>`).join('') : `<tr><td colspan="11" class="p-6 text-center text-slate-500">Katalog masih kosong. Isi form spesifikasi sebuah device lalu tekan "Simpan sebagai model baru".</td></tr>`}
         </tbody></table>
     </div>`;
@@ -3100,7 +3276,7 @@ $('#modal').addEventListener('click', e=>{ if(e.target.id==='modal') closeForm()
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeForm(); });
 $$('.tab-btn').forEach(b=>b.addEventListener('click',()=>{ state.tab=b.dataset.tab; render(); }));
 $$('.view-btn').forEach(b=>b.addEventListener('click',()=>{ state.view=b.dataset.view; render(); }));
-let t; $('#search').addEventListener('input', e=>{ clearTimeout(t); t=setTimeout(()=>{ state.q=e.target.value; render(); },180); });
+let t; $('#search').addEventListener('input', e=>{ clearTimeout(t); t=setTimeout(()=>{ state.q=e.target.value; render(); },280); });
 $('#fCluster').addEventListener('change',e=>{ state.cluster=e.target.value; render(); });
 $('#fZona').addEventListener('change',   e=>{ state.zona=e.target.value; render(); });
 $('#fBrand').addEventListener('change',  e=>{ state.brand=e.target.value; render(); });
